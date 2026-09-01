@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>MKM HQ</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ============================= -->
+    <!-- LANDING PAGE -->
+    <!-- ============================= -->
+
+    <section id="landing" class="page">
+
+        <div class="hero">
+
+            <div class="logo">MKM</div>
+
+            <h1>Welcome to MKM</h1>
+
+            <p>
+                Your identity inside the MKM ecosystem.
+            </p>
+
+            <div class="buttons">
+
+                <button onclick="showPage('login')">
+                    Log In
+                </button>
+
+                <button
+                    class="secondary"
+                    onclick="showPage('register')"
+                >
+                    Create Account
+                </button>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ============================= -->
+    <!-- REGISTER -->
+    <!-- ============================= -->
+
+    <section id="register" class="page hidden">
+
+        <div class="card">
+
+            <button
+                class="back"
+                onclick="showPage('landing')"
+            >
+                ← Back
+            </button>
+
+            <div class="logo small">MKM</div>
+
+            <h1>Create your account</h1>
+
+            <p class="subtitle">
+                Join the MKM ecosystem.
+            </p>
+
+            <form id="signup-form">
+
+                <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    placeholder="Username"
+                    autocomplete="username"
+                    required
+                >
+
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    placeholder="Email"
+                    autocomplete="email"
+                    required
+                >
+
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Password"
+                    autocomplete="new-password"
+                    required
+                >
+
+                <button type="submit">
+                    Create Account
+                </button>
+
+            </form>
+
+            <p id="signup-message" class="message"></p>
+
+            <p class="switch">
+                Already have an account?
+                <button
+                    class="link"
+                    onclick="showPage('login')"
+                >
+                    Log in
+                </button>
+            </p>
+
+        </div>
+
+    </section>
+
+
+    <!-- ============================= -->
+    <!-- LOGIN -->
+    <!-- ============================= -->
+
+    <section id="login" class="page hidden">
+
+        <div class="card">
+
+            <button
+                class="back"
+                onclick="showPage('landing')"
+            >
+                ← Back
+            </button>
+
+            <div class="logo small">MKM</div>
+
+            <h1>Welcome back</h1>
+
+            <p class="subtitle">
+                Log in to your MKM account.
+            </p>
+
+            <form id="login-form">
+
+                <input
+                    type="email"
+                    id="login-email"
+                    name="email"
+                    placeholder="Email"
+                    autocomplete="email"
+                    required
+                >
+
+                <input
+                    type="password"
+                    id="login-password"
+                    name="password"
+                    placeholder="Password"
+                    autocomplete="current-password"
+                    required
+                >
+
+                <button type="submit">
+                    Log In
+                </button>
+
+            </form>
+
+            <p id="login-message" class="message"></p>
+
+            <p class="switch">
+                Don't have an account?
+                <button
+                    class="link"
+                    onclick="showPage('register')"
+                >
+                    Create one
+                </button>
+            </p>
+
+        </div>
+
+    </section>
+
+
+    <!-- ============================= -->
+    <!-- DASHBOARD -->
+    <!-- ============================= -->
+
+    <section id="dashboard" class="page hidden">
+
+        <div class="dashboard">
+
+            <header>
+
+                <div class="logo small">MKM</div>
+
+                <button
+                    class="logout"
+                    onclick="logout()"
+                >
+                    Log Out
+                </button>
+
+            </header>
+
+
+            <div class="welcome">
+
+                <p class="eyebrow">
+                    MKM ACCOUNT
+                </p>
+
+                <h1>
+                    Welcome back,
+                    <span id="dashboard-username">
+                        Member
+                    </span>
+                </h1>
+
+                <p id="dashboard-mkm-id">
+                    MKM-000000
+                </p>
+
+            </div>
+
+
+            <div class="stats">
+
+                <div class="stat-card">
+
+                    <span>
+                        MKM Balance
+                    </span>
+
+                    <strong id="balance">
+                        €10,000.00
+                    </strong>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <span>
+                        Portfolio
+                    </span>
+
+                    <strong id="portfolio">
+                        €10,000.00
+                    </strong>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <span>
+                        P&L
+                    </span>
+
+                    <strong id="pnl">
+                        +€0.00
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="dashboard-grid">
+
+                <div class="panel">
+
+                    <h2>Account</h2>
+
+                    <div class="row">
+                        <span>Status</span>
+                        <strong id="account-status">
+                            Member
+                        </strong>
+                    </div>
+
+                    <div class="row">
+                        <span>Username</span>
+                        <strong id="account-username">
+                            —
+                        </strong>
+                    </div>
+
+                    <div class="row">
+                        <span>Member since</span>
+                        <strong id="account-created">
+                            —
+                        </strong>
+                    </div>
+
+                </div>
+
+
+                <div class="panel">
+
+                    <h2>Quick Actions</h2>
+
+                    <button
+                         class="action"
+                         onclick="loadMarket()"
+                    >
+                        Market
+                    </button>
+
+                    <button class="action">
+                        Portfolio
+                    </button>
+
+                    <button class="action">
+                        Transactions
+                    </button>
+
+                    <button class="action">
+                        Profile
+                    </button>
+
+<button
+    class="action"
+    onclick="loadAdminPanel()"
+    style="display: none;"
+>
+    Admin Panel
+</button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+<!-- ============================= -->
+<!-- MARKET -->
+<!-- ============================= -->
+
+<section id="market" class="page hidden">
+
+    <div class="market-page">
+
+        <header class="market-header">
+
+            <div>
+                <div class="logo small">MKM</div>
+
+                <p class="eyebrow">
+                    MKM EXCHANGE
+                </p>
+            </div>
+
+            <button
+                class="logout"
+                onclick="showPage('dashboard')"
+            >
+                ← Dashboard
+            </button>
+
+        </header>
+
+
+        <!-- SEARCH -->
+
+        <div class="market-search">
+
+            <input
+                type="search"
+                id="market-search"
+                placeholder="Search markets..."
+                oninput="filterMarket()"
+            >
+
+        </div>
+
+
+        <!-- CATEGORIES -->
+
+        <div class="market-categories">
+
+            <button
+                class="category active"
+                onclick="setMarketCategory('All', this)"
+            >
+                All
+            </button>
+
+            <button
+                class="category"
+                onclick="setMarketCategory('Stocks', this)"
+            >
+                Stocks
+            </button>
+
+            <button
+                class="category"
+                onclick="setMarketCategory('Indices', this)"
+            >
+                Indices
+            </button>
+
+            <button
+                class="category"
+                onclick="setMarketCategory('Commodities', this)"
+            >
+                Commodities
+            </button>
+
+        </div>
+
+
+        <!-- MARKET OVERVIEW -->
+
+        <div class="market-section">
+
+            <div class="section-heading">
+
+                <div>
+                    <p class="eyebrow">
+                        OVERVIEW
+                    </p>
+
+                    <h1>Market</h1>
+                </div>
+
+            </div>
+
+
+            <div class="overview-grid">
+
+                <div class="overview-card">
+
+                    <span>Listed Assets</span>
+
+                    <strong id="market-count">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="overview-card">
+
+                    <span>Total Market Cap</span>
+
+                    <strong id="market-cap">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="overview-card">
+
+                    <span>Market Volume</span>
+
+                    <strong id="market-volume">
+                        —
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- GAINERS / LOSERS -->
+
+        <div class="market-section">
+
+            <div class="market-columns">
+
+
+                <div class="market-box">
+
+                    <div class="box-header">
+                        <h2>Top Gainers</h2>
+                    </div>
+
+                    <div id="gainers-list">
+                        Loading...
+                    </div>
+
+                </div>
+
+
+                <div class="market-box">
+
+                    <div class="box-header">
+                        <h2>Top Losers</h2>
+                    </div>
+
+                    <div id="losers-list">
+                        Loading...
+                    </div>
+
+                </div>
+
+
+            </div>
+
+        </div>
+
+
+        <!-- ALL MARKETS -->
+
+        <div class="market-section">
+
+            <div class="section-heading">
+
+                <div>
+                    <p class="eyebrow">
+                        MARKETS
+                    </p>
+
+                    <h2>
+                        All Assets
+                    </h2>
+                </div>
+
+            </div>
+
+
+            <div
+                id="market-list"
+                class="full-market-list"
+            >
+
+                Loading...
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- ============================= -->
+<!-- ASSET DETAIL -->
+<!-- ============================= -->
+
+<section id="asset-detail" class="page hidden">
+
+    <div class="asset-page">
+
+        <header class="market-header">
+
+            <button
+                class="back"
+                onclick="showPage('market')"
+            >
+                ← Markets
+            </button>
+
+            <div class="logo small">
+                MKM
+            </div>
+
+        </header>
+
+
+        <!-- ASSET HEADER -->
+
+        <div class="asset-header">
+
+            <div>
+
+                <p
+                    class="eyebrow"
+                    id="asset-category"
+                >
+                    STOCK
+                </p>
+
+                <h1 id="asset-name">
+                    Asset
+                </h1>
+
+                <p
+                    class="asset-symbol"
+                    id="asset-symbol"
+                >
+                    MKM
+                </p>
+
+            </div>
+
+
+            <div class="asset-current-price">
+
+                <strong id="asset-price">
+                    €0.00
+                </strong>
+
+                <span id="asset-change">
+                    +0.00%
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- CHART -->
+
+        <div class="chart-panel">
+
+            <div class="chart-header">
+
+                <div>
+
+                    <p class="eyebrow">
+                        PRICE
+                    </p>
+
+                    <h2>
+                        Price History
+                    </h2>
+
+                </div>
+
+
+                <div class="chart-periods">
+
+                    <button
+                        class="period active"
+                        onclick="setChartPeriod('1D', this)"
+                    >
+                        1D
+                    </button>
+
+                    <button
+                        class="period"
+                        onclick="setChartPeriod('1W', this)"
+                    >
+                        1W
+                    </button>
+
+                    <button
+                        class="period"
+                        onclick="setChartPeriod('1M', this)"
+                    >
+                        1M
+                    </button>
+
+                    <button
+                        class="period"
+                        onclick="setChartPeriod('3M', this)"
+                    >
+                        3M
+                    </button>
+
+                    <button
+                        class="period"
+                        onclick="setChartPeriod('1Y', this)"
+                    >
+                        1Y
+                    </button>
+
+                </div>
+
+            </div>
+
+
+            <div
+                id="price-chart"
+                class="price-chart"
+            >
+
+                <div class="chart-placeholder">
+                    Loading chart...
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- STATISTICS -->
+
+        <div class="asset-stats">
+
+            <div class="asset-stat">
+
+                <span>
+                    Market Cap
+                </span>
+
+                <strong id="asset-market-cap">
+                    —
+                </strong>
+
+            </div>
+
+
+            <div class="asset-stat">
+
+                <span>
+                    Volume
+                </span>
+
+                <strong id="asset-volume">
+                    —
+                </strong>
+
+            </div>
+
+
+            <div class="asset-stat">
+
+                <span>
+                    Category
+                </span>
+
+                <strong id="asset-stat-category">
+                    —
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <!-- ABOUT -->
+
+        <div class="asset-about">
+
+            <p class="eyebrow">
+                COMPANY
+            </p>
+
+            <h2>
+                About
+            </h2>
+
+            <p id="asset-description">
+                —
+            </p>
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- ============================= -->
+<!-- ADMIN PANEL -->
+<!-- ============================= -->
+
+<section id="admin" class="page hidden">
+
+    <div class="admin-page">
+
+        <header class="admin-header">
+
+            <div>
+                <div class="logo small">MKM</div>
+
+                <p class="eyebrow">
+                    MKM ADMINISTRATION
+                </p>
+            </div>
+
+            <button
+                class="logout"
+                onclick="showPage('dashboard')"
+            >
+                ← Dashboard
+            </button>
+
+        </header>
+
+
+        <div class="admin-title">
+
+            <p class="eyebrow">
+                CONTROL CENTER
+            </p>
+
+            <h1>Administration</h1>
+
+            <p>
+                Manage companies and the MKM market.
+            </p>
+
+        </div>
+
+
+        <!-- CREATE COMPANY -->
+
+        <div class="admin-grid">
+
+            <div class="panel">
+
+                <h2>List New Company</h2>
+
+                <p class="admin-description">
+                    Add a company to the MKM Exchange.
+                </p>
+
+
+                <form id="company-form">
+
+                    <input
+                        type="text"
+                        id="company-name"
+                        placeholder="Company name"
+                        required
+                    >
+
+
+                    <input
+                        type="text"
+                        id="company-symbol"
+                        placeholder="Ticker (e.g. TCORP)"
+                        maxlength="6"
+                        required
+                    >
+
+
+                    <select
+                        id="company-category"
+                        required
+                    >
+                        <option value="">
+                            Select category
+                        </option>
+
+                        <option value="Stocks">
+                            Stocks
+                        </option>
+
+                        <option value="Indices">
+                            Indices
+                        </option>
+
+                        <option value="Commodities">
+                            Commodities
+                        </option>
+                    </select>
+
+
+                    <input
+                        type="number"
+                        id="company-price"
+                        placeholder="Initial price"
+                        min="0.01"
+                        step="0.01"
+                        required
+                    >
+
+
+                    <input
+                        type="number"
+                        id="company-shares"
+                        placeholder="Shares outstanding"
+                        min="1"
+                        required
+                    >
+
+
+                    <button type="submit">
+                        List Company
+                    </button>
+
+                </form>
+
+
+                <p
+                    id="company-message"
+                    class="message"
+                ></p>
+
+            </div>
+
+
+            <!-- MARKET STATS -->
+
+            <div class="panel">
+
+                <h2>Market Control</h2>
+
+                <div class="row">
+
+                    <span>
+                        Listed Assets
+                    </span>
+
+                    <strong id="admin-asset-count">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="row">
+
+                    <span>
+                        Total Market Cap
+                    </span>
+
+                    <strong id="admin-market-cap">
+                        —
+                    </strong>
+
+                </div>
+
+
+                <div class="row">
+
+                    <span>
+                        Market Status
+                    </span>
+
+                    <strong>
+                        Operational
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- COMPANIES -->
+
+        <div class="panel admin-companies">
+
+            <div class="section-heading">
+
+                <div>
+
+                    <p class="eyebrow">
+                        LISTINGS
+                    </p>
+
+                    <h2>
+                        Listed Companies
+                    </h2>
+
+                </div>
+
+            </div>
+
+
+            <div id="admin-company-list">
+
+                Loading...
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+    <!-- SUPABASE -->
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
+<script src="app.js"></script>
+
+</body>
+
+</html>

@@ -1,0 +1,1056 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+
+    min-height: 100vh;
+
+    background:
+        radial-gradient(
+            circle at top,
+            #191b20 0%,
+            #08090b 45%
+        );
+
+    color: white;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+}
+
+
+/* ============================= */
+/* GENERAL */
+/* ============================= */
+
+.page {
+    min-height: 100vh;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    padding: 30px;
+}
+
+.hidden {
+    display: none;
+}
+
+
+/* ============================= */
+/* LOGO */
+/* ============================= */
+
+.logo {
+    font-size: 58px;
+
+    font-weight: 900;
+
+    letter-spacing: 12px;
+}
+
+.logo.small {
+    font-size: 34px;
+
+    letter-spacing: 7px;
+}
+
+
+/* ============================= */
+/* LANDING */
+/* ============================= */
+
+.hero {
+    text-align: center;
+
+    max-width: 600px;
+}
+
+.hero h1 {
+    margin-top: 35px;
+
+    font-size: 42px;
+}
+
+.hero p {
+    color: #8d9097;
+
+    font-size: 17px;
+
+    margin-bottom: 35px;
+}
+
+.buttons {
+    display: flex;
+
+    justify-content: center;
+
+    gap: 12px;
+}
+
+
+/* ============================= */
+/* BUTTONS */
+/* ============================= */
+
+button {
+    border: none;
+
+    border-radius: 9px;
+
+    padding: 14px 22px;
+
+    background: white;
+
+    color: black;
+
+    font-weight: 700;
+
+    font-size: 15px;
+
+    cursor: pointer;
+
+    transition: 0.15s;
+}
+
+button:hover {
+    transform: translateY(-1px);
+
+    opacity: 0.88;
+}
+
+button.secondary {
+    background: #17191d;
+
+    color: white;
+
+    border: 1px solid #2b2e34;
+}
+
+button.back {
+    background: transparent;
+
+    color: #777;
+
+    padding: 0;
+
+    margin-bottom: 30px;
+}
+
+button.link {
+    background: none;
+
+    color: white;
+
+    padding: 0;
+
+    font-size: inherit;
+}
+
+button.logout {
+    background: #17191d;
+
+    color: white;
+
+    border: 1px solid #2b2e34;
+}
+
+
+/* ============================= */
+/* AUTH CARD */
+/* ============================= */
+
+.card {
+    width: 100%;
+
+    max-width: 420px;
+
+    padding: 35px;
+
+    background: rgba(15, 16, 19, 0.9);
+
+    border: 1px solid #25272c;
+
+    border-radius: 16px;
+
+    box-shadow:
+        0 25px 80px rgba(0, 0, 0, 0.4);
+}
+
+.card h1 {
+    margin: 25px 0 8px;
+
+    font-size: 28px;
+}
+
+.subtitle {
+    color: #81848b;
+
+    margin-bottom: 28px;
+}
+
+
+/* ============================= */
+/* FORMS */
+/* ============================= */
+
+form {
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 12px;
+}
+
+input {
+    width: 100%;
+
+    padding: 15px;
+
+    border-radius: 9px;
+
+    border: 1px solid #292c31;
+
+    background: #0c0d0f;
+
+    color: white;
+
+    font-size: 15px;
+}
+
+input:focus {
+    outline: none;
+
+    border-color: #666;
+}
+
+form button {
+    margin-top: 6px;
+}
+
+.message {
+    min-height: 20px;
+
+    margin-top: 18px;
+
+    color: #999;
+}
+
+.switch {
+    margin-top: 25px;
+
+    color: #777;
+
+    font-size: 14px;
+
+    text-align: center;
+}
+
+
+/* ============================= */
+/* DASHBOARD */
+/* ============================= */
+
+.dashboard {
+    width: 100%;
+
+    max-width: 1050px;
+
+    padding: 30px;
+}
+
+.dashboard header {
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    margin-bottom: 80px;
+}
+
+.welcome .eyebrow {
+    color: #777;
+
+    font-size: 12px;
+
+    letter-spacing: 2px;
+
+    font-weight: 700;
+}
+
+.welcome h1 {
+    font-size: 38px;
+
+    margin: 8px 0;
+}
+
+.welcome > p:last-child {
+    color: #777;
+
+    font-family: monospace;
+
+    letter-spacing: 1px;
+}
+
+
+/* ============================= */
+/* STATS */
+/* ============================= */
+
+.stats {
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, 1fr);
+
+    gap: 15px;
+
+    margin-top: 40px;
+}
+
+.stat-card {
+    padding: 25px;
+
+    background: #101114;
+
+    border: 1px solid #24262b;
+
+    border-radius: 12px;
+}
+
+.stat-card span {
+    display: block;
+
+    color: #777;
+
+    font-size: 13px;
+
+    margin-bottom: 12px;
+}
+
+.stat-card strong {
+    font-size: 25px;
+}
+
+
+/* ============================= */
+/* PANELS */
+/* ============================= */
+
+.dashboard-grid {
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 15px;
+
+    margin-top: 15px;
+}
+
+.panel {
+    padding: 25px;
+
+    background: #101114;
+
+    border: 1px solid #24262b;
+
+    border-radius: 12px;
+}
+
+.panel h2 {
+    margin-top: 0;
+
+    font-size: 18px;
+}
+
+.row {
+    display: flex;
+
+    justify-content: space-between;
+
+    padding: 15px 0;
+
+    border-bottom: 1px solid #1d1f23;
+}
+
+.row:last-child {
+    border-bottom: none;
+}
+
+.row span {
+    color: #777;
+}
+
+.row strong {
+    font-weight: 500;
+}
+
+.action {
+    width: 100%;
+
+    margin-top: 8px;
+
+    text-align: left;
+
+    background: #17191d;
+
+    color: white;
+
+    border: 1px solid #292c31;
+}
+
+
+/* ============================= */
+/* MOBILE */
+/* ============================= */
+
+@media (max-width: 700px) {
+
+    .stats {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .buttons {
+        flex-direction: column;
+    }
+
+    .hero h1 {
+        font-size: 32px;
+    }
+
+    .dashboard {
+        padding: 15px;
+    }
+
+}
+
+/* ============================= */
+/* MARKET PAGE */
+/* ============================= */
+
+.market-page {
+    width: 100%;
+    max-width: 1150px;
+    padding: 30px;
+}
+
+.market-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 45px;
+}
+
+.market-search {
+    margin-bottom: 15px;
+}
+
+.market-search input {
+    font-size: 16px;
+    padding: 17px;
+}
+
+.market-categories {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 40px;
+    overflow-x: auto;
+}
+
+.category {
+    background: #101114;
+    color: #888;
+    border: 1px solid #24262b;
+    padding: 10px 17px;
+}
+
+.category.active {
+    background: white;
+    color: black;
+    border-color: white;
+}
+
+.market-section {
+    margin-top: 35px;
+}
+
+.section-heading {
+    margin-bottom: 18px;
+}
+
+.section-heading h1,
+.section-heading h2 {
+    margin: 5px 0 0;
+}
+
+.overview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.overview-card {
+    background: #101114;
+    border: 1px solid #24262b;
+    border-radius: 12px;
+    padding: 22px;
+}
+
+.overview-card span {
+    display: block;
+    color: #777;
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+.overview-card strong {
+    font-size: 23px;
+}
+
+.market-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.market-box {
+    background: #101114;
+    border: 1px solid #24262b;
+    border-radius: 12px;
+    padding: 22px;
+}
+
+.box-header h2 {
+    margin-top: 0;
+    font-size: 18px;
+}
+
+.mover {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 0;
+    border-top: 1px solid #1d1f23;
+}
+
+.mover div:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mover span {
+    color: #777;
+    font-size: 12px;
+}
+
+.mover-right {
+    text-align: right;
+}
+
+.mover-right strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.positive {
+    color: #7bd88f !important;
+}
+
+.negative {
+    color: #e47d7d !important;
+}
+
+.full-market-list {
+    background: #101114;
+    border: 1px solid #24262b;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.asset-row {
+    display: grid;
+    grid-template-columns: 1fr 180px 150px;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 22px;
+    border-bottom: 1px solid #1d1f23;
+}
+
+.asset-row:last-child {
+    border-bottom: none;
+}
+
+.asset-name {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.asset-name span,
+.asset-category {
+    color: #777;
+    font-size: 13px;
+}
+
+.asset-price {
+    text-align: right;
+}
+
+.asset-price strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.empty-market {
+    color: #777;
+    padding: 15px 0;
+}
+
+
+/* ============================= */
+/* MOBILE MARKET */
+/* ============================= */
+
+@media (max-width: 700px) {
+
+    .market-page {
+        padding: 15px;
+    }
+
+    .overview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .market-columns {
+        grid-template-columns: 1fr;
+    }
+
+    .asset-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .asset-category {
+        display: none;
+    }
+
+}
+
+/* ============================= */
+/* ASSET DETAIL PAGE */
+/* ============================= */
+
+.asset-page {
+    width: 100%;
+    max-width: 1150px;
+    padding: 30px;
+}
+
+.asset-page .market-header {
+    margin-bottom: 50px;
+}
+
+.asset-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 30px;
+    margin-bottom: 35px;
+}
+
+.asset-header h1 {
+    margin: 6px 0 4px;
+    font-size: 42px;
+}
+
+.asset-symbol {
+    margin: 0;
+    color: #777;
+    font-family: monospace;
+    letter-spacing: 2px;
+}
+
+.asset-current-price {
+    text-align: right;
+}
+
+.asset-current-price strong {
+    display: block;
+    font-size: 32px;
+    margin-bottom: 6px;
+}
+
+.asset-current-price span {
+    font-size: 15px;
+}
+
+.chart-panel {
+    background: #101114;
+    border: 1px solid #24262b;
+    border-radius: 12px;
+    padding: 25px;
+}
+
+.chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 25px;
+}
+
+.chart-header h2 {
+    margin: 5px 0 0;
+    font-size: 19px;
+}
+
+.chart-periods {
+    display: flex;
+    gap: 5px;
+}
+
+.period {
+    padding: 8px 12px;
+    background: transparent;
+    color: #777;
+    border: 1px solid transparent;
+    font-size: 12px;
+}
+
+.period:hover {
+    transform: none;
+    opacity: 1;
+    color: white;
+}
+
+.period.active {
+    background: #1b1d21;
+    color: white;
+    border-color: #303238;
+}
+
+.price-chart {
+    width: 100%;
+    height: 380px;
+    position: relative;
+    overflow: hidden;
+    border-top: 1px solid #1d1f23;
+    border-bottom: 1px solid #1d1f23;
+}
+
+.chart-placeholder {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    font-size: 14px;
+}
+
+.asset-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.asset-stat {
+    padding: 22px;
+    background: #101114;
+    border: 1px solid #24262b;
+    border-radius: 12px;
+}
+
+.asset-stat span {
+    display: block;
+    color: #777;
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+.asset-stat strong {
+    font-size: 18px;
+}
+
+.asset-about {
+    margin-top: 15px;
+    padding: 25px;
+    background: #101114;
+    border: 1px solid #24262b;
+    border-radius: 12px;
+}
+
+.asset-about h2 {
+    margin: 6px 0 12px;
+}
+
+.asset-about p:last-child {
+    color: #85878d;
+    line-height: 1.7;
+    max-width: 800px;
+}
+
+@media (max-width: 700px) {
+
+    .asset-page {
+        padding: 15px;
+    }
+
+    .asset-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .asset-header h1 {
+        font-size: 32px;
+    }
+
+    .asset-current-price {
+        text-align: left;
+    }
+
+    .chart-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .chart-periods {
+        width: 100%;
+    }
+
+    .period {
+        flex: 1;
+    }
+
+    .price-chart {
+        height: 280px;
+    }
+
+    .asset-stats {
+        grid-template-columns: 1fr;
+    }
+
+}
+
+/* ============================= */
+/* PRICE CHART */
+/* ============================= */
+
+.price-chart {
+    position: relative;
+    height: 380px;
+    padding: 0;
+}
+
+.price-chart-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.chart-grid {
+    stroke: #1d1f23;
+    stroke-width: 1;
+    stroke-dasharray: 5 5;
+}
+
+.chart-positive {
+    stroke: #ffffff;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.chart-negative {
+    stroke: #999999;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.chart-positive-area {
+    fill: rgba(255, 255, 255, 0.06);
+}
+
+.chart-negative-area {
+    fill: rgba(150, 150, 150, 0.05);
+}
+
+.chart-positive-dot {
+    fill: white;
+}
+
+.chart-negative-dot {
+    fill: #999999;
+}
+
+.chart-bottom {
+    position: absolute;
+    left: 35px;
+    right: 35px;
+    bottom: 10px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    color: #666;
+    font-size: 12px;
+}
+
+.chart-bottom strong {
+    color: white;
+}
+
+/* ============================= */
+/* ADMIN PANEL */
+/* ============================= */
+
+.admin-page {
+    width: 100%;
+    max-width: 1100px;
+    padding: 30px;
+}
+
+.admin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 70px;
+}
+
+.admin-title {
+    margin-bottom: 35px;
+}
+
+.admin-title h1 {
+    font-size: 40px;
+    margin: 8px 0;
+}
+
+.admin-title > p:last-child {
+    color: #777;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.admin-description {
+    color: #777;
+    font-size: 14px;
+    margin-bottom: 25px;
+}
+
+select {
+    width: 100%;
+    padding: 15px;
+    border-radius: 9px;
+    border: 1px solid #292c31;
+    background: #0c0d0f;
+    color: white;
+    font-size: 15px;
+}
+
+select:focus {
+    outline: none;
+    border-color: #666;
+}
+
+.admin-companies {
+    margin-top: 15px;
+}
+
+.admin-company {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 0;
+    border-bottom: 1px solid #1d1f23;
+}
+
+.admin-company:last-child {
+    border-bottom: none;
+}
+
+.admin-company-info strong {
+    display: block;
+    font-size: 16px;
+}
+
+.admin-company-info span {
+    display: block;
+    color: #777;
+    font-size: 13px;
+    margin-top: 5px;
+}
+
+.admin-company-price {
+    text-align: right;
+}
+
+.admin-company-price strong {
+    display: block;
+}
+
+.admin-company-price span {
+    color: #777;
+    font-size: 12px;
+}
+
+@media (max-width: 700px) {
+
+    .admin-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-page {
+        padding: 15px;
+    }
+
+}
+
+/* ============================================================
+   MKM INTERACTIVE CHART
+   ============================================================ */
+
+#price-chart {
+    width: 100%;
+    height: 420px;
+    min-height: 420px;
+    background: #080808;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+}
+
+.chart-loading,
+.chart-placeholder {
+    width: 100%;
+    height: 100%;
+    min-height: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #777;
+    background: #080808;
+}
+
+#price-chart canvas {
+    display: block;
+}
