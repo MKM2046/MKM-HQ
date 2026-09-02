@@ -26,7 +26,49 @@ const supabaseClient = createClient(
 const MKM_OWNER_ID =
     "dbba8502-f01b-4e86-aa42-aa5899ce771d";
 
-const LICENSE_PRICE = 5000;
+const LICENSE_TIERS = {
+    basic: {
+        name: "Basic",
+        price: 2500,
+        slots: 1,
+        maxShares: 100000,
+        commissionRate: 0.2,
+        weeklyFee: 100,
+        establishmentFee: 5000
+    },
+    standard: {
+        name: "Standard",
+        price: 10000,
+        slots: 3,
+        maxShares: 1000000,
+        commissionRate: 0.5,
+        weeklyFee: 250,
+        establishmentFee: 5000
+    },
+    enterprise: {
+        name: "Enterprise",
+        price: 50000,
+        slots: 5,
+        maxShares: 999999999,
+        commissionRate: 1.0,
+        weeklyFee: 500,
+        establishmentFee: 5000
+    }
+};
+
+const CATEGORY_MAP = {
+    stock: "📈 Stocks",
+    crypto: "🪙 Crypto",
+    index: "📊 Indices",
+    forex: "💱 Forex",
+    bonds: "🏦 Bonds",
+    commodity: "🛢️ Commodities"
+};
+
+function formatCategory(value) {
+    const key = String(value || "").toLowerCase().trim();
+    return CATEGORY_MAP[key] || key || "—";
+}
 
 let currentUser = null;
 let currentProfile = null;
@@ -340,17 +382,17 @@ async function loadDashboard() {
     );
 
     const licenseText = document.getElementById("dashboard-license-text");
-    const licenseBtn = document.getElementById("dashboard-license-btn");
+    const tierButtons = document.getElementById("dashboard-tier-buttons");
     if (licenseText) {
-        if (profile.company_license) {
-            licenseText.innerHTML = `<span style="color:#22c55e;font-weight:700;">Licensed</span> — You can establish companies.`;
-            if (licenseBtn) licenseBtn.classList.add("hidden");
+        const tier = profile.license_tier;
+        const slots = profile.license_slots || 0;
+        const config = tier ? LICENSE_TIERS[tier] : null;
+        if (config && slots > 0) {
+            licenseText.innerHTML = `<span style="color:#22c55e;font-weight:700;">${config.name} License</span> — ${slots} slot(s)`;
+            if (tierButtons) tierButtons.classList.remove("hidden");
         } else {
-            licenseText.innerHTML = `Status: <span style="color:#94a3b8;">No license</span> — Purchase a license to establish your own companies.`;
-            if (licenseBtn) {
-                licenseBtn.classList.remove("hidden");
-                licenseBtn.textContent = `Buy License (${formatMoney(LICENSE_PRICE)})`;
-            }
+            licenseText.innerHTML = `Status: <span style="color:#94a3b8;">No license</span> — Choose a tier below.`;
+            if (tierButtons) tierButtons.classList.remove("hidden");
         }
     }
 
@@ -1214,6 +1256,7 @@ async function loadMarket() {
     } = await supabaseClient
         .from("Assets")
         .select("*")
+        .eq("is_delisted", false)
         .order("market_cap", {
             ascending: false,
             nullsFirst: false
@@ -1340,6 +1383,7 @@ function getAssetChange(asset) {
 
     const previous =
         Number(
+            asset.day_open_price ??
             asset.previous_price ??
             price
         );
@@ -1445,13 +1489,8 @@ function renderMoverList(
 
         row.innerHTML = `
             <div>
-                <strong>
-                    ${escapeHTML(asset.symbol)}
-                </strong>
-
-                <span>
-                    ${escapeHTML(asset.name)}
-                </span>
+                <strong>${escapeHTML(asset.symbol)}</strong>
+                <span>${escapeHTML(asset.name)} · ${formatCategory(asset.category)}</span>
             </div>
 
             <div>
@@ -1630,8 +1669,8 @@ async function loadAssetDetail(assetId) {
 
     setText("asset-name", asset.name);
     setText("asset-symbol", asset.symbol);
-    setText("asset-category", asset.category);
-    setText("asset-category-stat", asset.category);
+    setText("asset-category", formatCategory(asset.category));
+    setText("asset-category-stat", formatCategory(asset.category));
 
     setText(
         "asset-price",
@@ -1652,6 +1691,13 @@ async function loadAssetDetail(assetId) {
         "asset-volume",
         formatNumber(asset.volume || 0)
     );
+
+    const volumeFill = document.getElementById("volume-fill");
+    if (volumeFill) {
+        const maxVolume = Math.max(asset.volume || 0, 1000000);
+        const pct = Math.min(100, ((asset.volume || 0) / maxVolume) * 100);
+        volumeFill.style.width = pct + "%";
+    }
 
     setText(
         "asset-description",
@@ -2112,6 +2158,13 @@ async function refreshCurrentAsset() {
         "asset-volume",
         formatNumber(asset.volume || 0)
     );
+
+    const volumeFill = document.getElementById("volume-fill");
+    if (volumeFill) {
+        const maxVolume = Math.max(asset.volume || 0, 1000000);
+        const pct = Math.min(100, ((asset.volume || 0) / maxVolume) * 100);
+        volumeFill.style.width = pct + "%";
+    }
 
     updateAssetChange(asset);
     updateTradePreview();
@@ -2850,6 +2903,7 @@ async function loadAdminPanel() {
     await loadAdminAssets();
     await loadMarketSettings();
     await loadAdminCodes();
+    await loadAdminRequests();
 
     showPage("admin");
 }
@@ -3487,17 +3541,54 @@ async function simulateAssetMovement(
         return;
     }
 
+    /*
+     * Reset day_open_price if it's a new day
+     */
+    const lastReset = asset.last_day_reset ? new Date(asset.last_day_reset) : null;
+    const now = new Date();
+    const isNewDay = !lastReset || 
+        lastReset.getFullYear() !== now.getFullYear() ||
+        lastReset.getMonth() !== now.getMonth() ||
+        lastReset.getDate() !== now.getDate();
+
+    if (isNewDay) {
+        await supabaseClient
+            .from("Assets")
+            .update({ day_open_price: current, last_day_reset: now.toISOString() })
+            .eq("id", asset.id);
+    }
+
     const maxMovement =
         Number(
             settings.max_normal_movement_percent ||
             1
         );
 
+    /*
+     * Volume affects volatility.
+     * High volume = liquid = more stable (smaller moves).
+     * Low volume = illiquid = wilder swings.
+     */
+    const volume =
+        Number(asset.volume || 0);
+
+    const liquidityFactor =
+        Math.max(
+            0.25,
+            1 /
+            (
+                1 +
+                Math.log10(volume + 10) *
+                0.15
+            )
+        );
+
     let movement =
         (
             Math.random() * 2 - 1
         ) *
-        maxMovement;
+        maxMovement *
+        liquidityFactor;
 
     const {
         data: events
@@ -3771,19 +3862,25 @@ async function redeemCode() {
 // COMPANY LICENSE
 // ============================================================
 
-async function buyCompanyLicense() {
+async function buyLicenseTier(tier) {
     if (!currentUser) { alert("Please log in."); return; }
 
+    const config = LICENSE_TIERS[tier];
+    if (!config) return;
+
     const confirmation = confirm(
-        `Buy a company license for ${formatMoney(LICENSE_PRICE)}?\n\n` +
-        `This allows you to establish your own companies on MKM HQ.`
+        `Buy ${config.name} License for ${formatMoney(config.price)}?\n\n` +
+        `• Adds ${config.slots} company slot(s)\n` +
+        `• Max shares per company: ${formatNumber(config.maxShares)}\n` +
+        `• Commission rate: ${config.commissionRate}% per trade\n` +
+        `• Establishment fee: ${formatMoney(config.establishmentFee)} per company\n` +
+        `• Weekly listing fee: ${formatMoney(config.weeklyFee)} per company`
     );
     if (!confirmation) return;
 
     try {
-        const { data, error } = await supabaseClient.rpc("buy_company_license", {
-            p_user_id: currentUser.id,
-            p_price: LICENSE_PRICE
+        const { data, error } = await supabaseClient.rpc("buy_company_license_tier", {
+            p_tier: tier
         });
         if (error) throw error;
 
@@ -3805,6 +3902,11 @@ async function buyCompanyLicense() {
     }
 }
 
+// Legacy wrapper for old calls
+async function buyCompanyLicense() {
+    await buyLicenseTier("basic");
+}
+
 
 // ============================================================
 // MY COMPANIES
@@ -3815,12 +3917,16 @@ async function loadMyCompanies() {
 
     const { data: profile } = await supabaseClient
         .from("Profiles")
-        .select("company_license, license_purchased_at, balance")
+        .select("company_license, license_tier, license_slots, license_purchased_at, balance")
         .eq("id", currentUser.id)
         .maybeSingle();
 
     renderLicenseStatus(profile);
 
+    // Load my requests
+    await loadMyRequests();
+
+    // Load my companies with fee status
     const { data: companies, error } = await supabaseClient
         .from("Assets")
         .select("*")
@@ -3828,7 +3934,18 @@ async function loadMyCompanies() {
         .order("created_at", { ascending: false });
 
     if (error) console.error(error);
-    renderMyCompaniesList(companies || []);
+    renderMyCompaniesList(companies || [], profile);
+
+    // Show slots info
+    const slotsInfo = document.getElementById("slots-info");
+    if (slotsInfo) {
+        const totalSlots = profile?.license_slots || 0;
+        const used = (companies || []).filter(c => !c.is_delisted).length;
+        const pending = document.querySelectorAll("#my-requests-list .request-row").length;
+        const remaining = Math.max(0, totalSlots - used - pending);
+        slotsInfo.innerHTML = `Slots: <strong>${used + pending}/${totalSlots}</strong> used · <strong>${remaining}</strong> remaining`;
+        slotsInfo.style.color = remaining > 0 ? "#22c55e" : "#ef4444";
+    }
 
     showPage("my-companies");
 }
@@ -3838,94 +3955,203 @@ function renderLicenseStatus(profile) {
     const text = document.getElementById("license-status-text");
     const btn = document.getElementById("buy-license-btn");
     const formCard = document.getElementById("establish-form-card");
+    const tierInfo = document.getElementById("license-tier-info");
 
     if (!text) return;
 
-    const hasLicense = profile?.company_license === true;
+    const tier = profile?.license_tier;
+    const config = tier ? LICENSE_TIERS[tier] : null;
+    const slots = profile?.license_slots || 0;
 
-    if (hasLicense) {
-        text.innerHTML = `<span style="color:#22c55e;font-weight:700;">Licensed</span> — You can establish companies.`;
-        if (btn) btn.classList.add("hidden");
-        if (formCard) formCard.classList.remove("hidden");
-    } else {
-        text.innerHTML = `Status: <span style="color:#94a3b8;">No license</span> — Purchase a license to establish your own companies.`;
+    if (config && slots > 0) {
+        text.innerHTML = `<span style="color:#22c55e;font-weight:700;">${config.name} License</span> · ${slots} slot(s)`;
+        if (tierInfo) {
+            tierInfo.innerHTML = `
+                <div class="tier-details">
+                    <p>Slots: ${slots} total</p>
+                    <p>Max shares per company: ${formatNumber(config.maxShares)}</p>
+                    <p>Commission: ${config.commissionRate}% per trade</p>
+                    <p>Establishment fee: ${formatMoney(config.establishmentFee)} per company</p>
+                    <p>Weekly listing fee: ${formatMoney(config.weeklyFee)} per company</p>
+                </div>
+            `;
+            tierInfo.classList.remove("hidden");
+        }
         if (btn) {
             btn.classList.remove("hidden");
-            btn.textContent = `Buy License (${formatMoney(LICENSE_PRICE)})`;
+            btn.innerHTML = `
+                <div style="display:flex;flex-direction:column;gap:6px;margin-top:12px;">
+                    <button onclick="buyLicenseTier('basic')">+ Basic Slot — ${formatMoney(2500)}</button>
+                    <button onclick="buyLicenseTier('standard')">+ Standard Slot — ${formatMoney(10000)}</button>
+                    <button onclick="buyLicenseTier('enterprise')">+ Enterprise Slot — ${formatMoney(50000)}</button>
+                </div>
+            `;
+        }
+        if (formCard) formCard.classList.remove("hidden");
+    } else {
+        text.innerHTML = `Status: <span style="color:#94a3b8;">No license</span>`;
+        if (tierInfo) tierInfo.classList.add("hidden");
+        if (btn) {
+            btn.classList.remove("hidden");
+            btn.innerHTML = `
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                    <button onclick="buyLicenseTier('basic')">Basic — ${formatMoney(2500)}</button>
+                    <button onclick="buyLicenseTier('standard')">Standard — ${formatMoney(10000)}</button>
+                    <button onclick="buyLicenseTier('enterprise')">Enterprise — ${formatMoney(50000)}</button>
+                </div>
+            `;
         }
         if (formCard) formCard.classList.add("hidden");
     }
 }
 
 
-function renderMyCompaniesList(companies) {
-    const container = document.getElementById("my-companies-list");
+async function loadMyRequests() {
+    const container = document.getElementById("my-requests-list");
     if (!container) return;
 
-    if (!companies.length) {
-        container.innerHTML = `<p style="color:#94a3b8;">No companies established yet.</p>`;
+    const { data: requests, error } = await supabaseClient
+        .from("CompanyRequests")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .order("created_at", { ascending: false });
+
+    if (error || !requests || !requests.length) {
+        container.innerHTML = "<p style=\"color:#94a3b8;\">No pending requests.</p>";
         return;
     }
 
     container.innerHTML = "";
-    companies.forEach(asset => {
+    requests.forEach(req => {
         const row = document.createElement("div");
-        row.className = "admin-company-row";
-        row.style.cursor = "pointer";
+        row.className = "request-row";
+        const statusColor = req.status === 'pending' ? '#eab308' : req.status === 'approved' ? '#22c55e' : '#ef4444';
         row.innerHTML = `
             <div>
-                <strong>${escapeHTML(asset.name)}</strong>
-                <span>${escapeHTML(asset.symbol)} · ${escapeHTML(asset.category)}</span>
+                <strong>${escapeHTML(req.name)} (${escapeHTML(req.symbol)})</strong>
+                <span>${formatCategory(req.category)} · ${formatNumber(req.requested_shares)} shares requested</span>
             </div>
-            <div>${formatMoney(asset.price)}</div>
-            <div>${formatMoney(asset.market_cap || 0)}</div>
+            <div style="color:${statusColor};font-weight:700;text-transform:uppercase;font-size:11px;">${req.status}</div>
+            <div>${formatDate(req.created_at)}</div>
+            ${req.admin_notes ? `<div style="color:#94a3b8;font-size:12px;margin-top:4px;">Note: ${escapeHTML(req.admin_notes)}</div>` : ''}
         `;
-        row.addEventListener("click", () => loadAssetDetail(asset.id));
         container.appendChild(row);
     });
 }
 
 
-async function establishCompany(event) {
+function renderMyCompaniesList(companies, profile) {
+    const container = document.getElementById("my-companies-list");
+    if (!container) return;
+
+    const config = profile?.license_tier ? LICENSE_TIERS[profile.license_tier] : null;
+
+    if (!companies.length) {
+        container.innerHTML = `
+            <p style="color:#94a3b8;">No companies yet.</p>
+            <p style="color:var(--muted);font-size:12px;margin-top:8px;">
+                Each company costs ${config ? formatMoney(config.establishmentFee) : formatMoney(5000)} to establish (paid on approval).
+            </p>
+        `;
+        return;
+    }
+
+    container.innerHTML = "";
+    companies.forEach(asset => {
+        const now = new Date();
+        const paidUntil = asset.listing_fee_paid_until ? new Date(asset.listing_fee_paid_until) : null;
+        const isDelisted = asset.is_delisted === true || (paidUntil && paidUntil < now);
+        const daysLeft = paidUntil ? Math.ceil((paidUntil - now) / (1000 * 60 * 60 * 24)) : 0;
+
+        const row = document.createElement("div");
+        row.className = "company-row" + (isDelisted ? " delisted" : "");
+
+        let feeStatus = '';
+        if (isDelisted) {
+            feeStatus = `<span style="color:#ef4444;font-weight:700;">DELISTED</span>`;
+        } else if (daysLeft <= 3) {
+            feeStatus = `<span style="color:#eab308;font-weight:700;">${daysLeft}d left</span>`;
+        } else {
+            feeStatus = `<span style="color:#22c55e;">${daysLeft}d left</span>`;
+        }
+
+        row.innerHTML = `
+            <div class="company-info" onclick="${isDelisted ? '' : `loadAssetDetail('${asset.id}')`}">
+                <strong>${escapeHTML(asset.name)} ${isDelisted ? '⚠️' : ''}</strong>
+                <span>${escapeHTML(asset.symbol)} · ${formatCategory(asset.category)}</span>
+                <span style="color:var(--muted);font-size:12px;">Founder shares: ${formatNumber(asset.founder_shares || 0)} · Commission: ${asset.commission_rate || 0}%</span>
+            </div>
+            <div class="company-stats">
+                <div>${formatMoney(asset.price)}</div>
+                <div>${formatMoney(asset.market_cap || 0)}</div>
+                <div>${feeStatus}</div>
+            </div>
+            <div class="company-actions">
+                ${!isDelisted ? `<button class="secondary" onclick="event.stopPropagation();loadChat('${asset.id}');">Message</button>` : ''}
+                <button onclick="event.stopPropagation();payListingFee('${asset.id}')">Pay Fee</button>
+            </div>
+        `;
+        container.appendChild(row);
+    });
+}
+
+
+async function submitCompanyRequest(event) {
     event.preventDefault();
     if (!currentUser) return;
 
     const message = document.getElementById("establish-message");
     const name = document.getElementById("establish-name")?.value.trim();
     const symbol = document.getElementById("establish-symbol")?.value.trim().toUpperCase();
-    const category = document.getElementById("establish-category")?.value;
-    const price = Number(document.getElementById("establish-price")?.value);
     const shares = Number(document.getElementById("establish-shares")?.value);
 
-    if (!name || !symbol || !category || !Number.isFinite(price) || price <= 0 || !Number.isInteger(shares) || shares <= 0) {
+    if (!name || !symbol || !Number.isInteger(shares) || shares <= 0) {
         if (message) { message.textContent = "Please fill in all fields correctly."; message.style.color = "#ef4444"; }
         return;
     }
 
-    if (message) { message.textContent = "Establishing..."; message.style.color = ""; }
+    if (message) { message.textContent = "Submitting request..."; message.style.color = ""; }
 
     try {
-        const { data, error } = await supabaseClient.rpc("create_user_company", {
-            p_user_id: currentUser.id,
+        const { data, error } = await supabaseClient.rpc("submit_company_request", {
             p_name: name,
             p_symbol: symbol,
-            p_category: category,
-            p_price: price,
-            p_shares: shares
+            p_requested_shares: shares
         });
         if (error) throw error;
 
         if (data.success) {
             if (message) { message.textContent = data.message; message.style.color = "#22c55e"; }
             document.getElementById("establish-form")?.reset();
-            if (data.asset_id) await recordPriceHistory(data.asset_id, price, price);
             await loadMyCompanies();
         } else {
             if (message) { message.textContent = data.message; message.style.color = "#ef4444"; }
         }
     } catch (err) {
-        console.error("Establish error:", err);
-        if (message) { message.textContent = err.message || "Could not establish company."; message.style.color = "#ef4444"; }
+        console.error("Request error:", err);
+        if (message) { message.textContent = err.message || "Could not submit request."; message.style.color = "#ef4444"; }
+    }
+}
+
+
+async function payListingFee(assetId) {
+    if (!currentUser) return;
+
+    try {
+        const { data, error } = await supabaseClient.rpc("pay_listing_fee", {
+            p_asset_id: assetId
+        });
+        if (error) throw error;
+
+        if (data.success) {
+            alert(data.message);
+            await loadMyCompanies();
+        } else {
+            alert(data.message);
+        }
+    } catch (err) {
+        console.error("Fee payment error:", err);
+        alert(err.message || "Could not pay fee.");
     }
 }
 
@@ -4603,6 +4829,117 @@ async function markMessagesRead(partnerId) {
 
 
 // ============================================================
+// ADMIN: COMPANY REQUESTS
+// ============================================================
+
+async function loadAdminRequests() {
+    if (!currentUser || currentUser.id !== MKM_OWNER_ID) return;
+
+    const { data: requests, error } = await supabaseClient
+        .from("CompanyRequests")
+        .select(`
+            id,
+            user_id,
+            name,
+            symbol,
+            category,
+            requested_shares,
+            status,
+            created_at
+        `)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+    if (error) { console.error(error); return; }
+
+    const container = document.getElementById("admin-requests-list");
+    if (!container) return;
+
+    if (!requests || !requests.length) {
+        container.innerHTML = "<p style=\"color:#94a3b8;\">No pending requests.</p>";
+        return;
+    }
+
+    container.innerHTML = "";
+    requests.forEach(req => {
+        const row = document.createElement("div");
+        row.className = "request-row";
+        row.innerHTML = `
+            <div>
+                <strong>${escapeHTML(req.name)} (${escapeHTML(req.symbol)})</strong>
+                <span>${formatCategory(req.category)} · ${formatNumber(req.requested_shares)} shares · by ${escapeHTML(req.user_id?.substring(0,8) || "user")}</span>
+            </div>
+            <div class="request-actions">
+                <input type="number" id="req-price-${req.id}" placeholder="Price €" min="0.01" step="0.01" style="width:100px;">
+                <input type="number" id="req-shares-${req.id}" placeholder="Shares" min="1" step="1" style="width:100px;" value="${req.requested_shares}">
+                <button onclick="approveCompanyRequest('${req.id}')">Approve</button>
+                <button class="secondary" onclick="rejectCompanyRequest('${req.id}')">Reject</button>
+            </div>
+        `;
+        container.appendChild(row);
+    });
+}
+
+async function approveCompanyRequest(requestId) {
+    if (!currentUser || currentUser.id !== MKM_OWNER_ID) return;
+
+    const priceInput = document.getElementById(`req-price-${requestId}`);
+    const sharesInput = document.getElementById(`req-shares-${requestId}`);
+    const price = Number(priceInput?.value);
+    const shares = Number(sharesInput?.value);
+
+    if (!Number.isFinite(price) || price <= 0 || !Number.isInteger(shares) || shares <= 0) {
+        alert("Enter valid price and shares.");
+        return;
+    }
+
+    try {
+        const { data, error } = await supabaseClient.rpc("approve_company_request", {
+            p_request_id: requestId,
+            p_starting_price: price,
+            p_approved_shares: shares
+        });
+        if (error) throw error;
+
+        if (data.success) {
+            alert(data.message);
+            await loadAdminRequests();
+            await loadAdminAssets();
+        } else {
+            alert(data.message);
+        }
+    } catch (err) {
+        console.error(err);
+        alert(err.message || "Approval failed.");
+    }
+}
+
+async function rejectCompanyRequest(requestId) {
+    if (!currentUser || currentUser.id !== MKM_OWNER_ID) return;
+
+    const reason = prompt("Reason for rejection (optional):");
+    if (reason === null) return;
+
+    try {
+        const { data, error } = await supabaseClient.rpc("reject_company_request", {
+            p_request_id: requestId,
+            p_reason: reason || ""
+        });
+        if (error) throw error;
+
+        if (data.success) {
+            await loadAdminRequests();
+        } else {
+            alert(data.message);
+        }
+    } catch (err) {
+        console.error(err);
+        alert(err.message || "Rejection failed.");
+    }
+}
+
+
+// ============================================================
 // GLOBAL SESSION LISTENER
 // ============================================================
 
@@ -4713,7 +5050,7 @@ document.addEventListener(
         );
 
         /*
-         * Establish company form
+         * Submit company request form
          */
         const establishForm =
             document.getElementById(
@@ -4722,7 +5059,7 @@ document.addEventListener(
 
         establishForm?.addEventListener(
             "submit",
-            establishCompany
+            submitCompanyRequest
         );
 
         /*

@@ -549,6 +549,70 @@ textarea {
    MARKET SEARCH / FILTERS
    ========================================================= */
 
+/* =========================================================
+   VOLUME BAR
+   ========================================================= */
+
+.volume-bar {
+    width: 100%;
+    height: 4px;
+    background: #1a2027;
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.volume-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #36d979, #59e891);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+    width: 0%;
+}
+
+/* Volume indicator in market list */
+.market-row > div:nth-child(5) {
+    font-size: 12px;
+    color: var(--muted-2);
+}
+
+/* =========================================================
+   CATEGORY BUTTONS (more options)
+   ========================================================= */
+
+.category-buttons {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+}
+
+.category-buttons::-webkit-scrollbar {
+    display: none;
+}
+
+.category-buttons button {
+    flex-shrink: 0;
+    padding: 8px 14px;
+    background: #0b0f13;
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.category-buttons button:hover {
+    color: #fff;
+    background: #151b21;
+}
+
+.category-buttons button.active {
+    background: #1b2229;
+    color: #fff;
+    border-color: #39434e;
+}
+
 .category-buttons {
     display: flex;
 
@@ -2042,6 +2106,168 @@ tr:hover td {
     .social-search button {
         width: 100%;
     }
+}
+
+/* =========================================================
+   DELISTED BANNER
+   ========================================================= */
+
+#asset-delisted-banner {
+    margin-bottom: 10px;
+    padding: 14px 18px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* =========================================================
+   COMPANY ROWS (My Companies)
+   ========================================================= */
+
+.company-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 15px;
+    padding: 14px 0;
+    border-bottom: 1px solid #1b2229;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.company-row:last-child {
+    border-bottom: none;
+}
+
+.company-row:hover {
+    background: rgba(255,255,255,0.012);
+}
+
+.company-row.delisted {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.company-row.delisted:hover {
+    background: transparent;
+}
+
+.company-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.company-info strong {
+    font-size: 14px;
+}
+
+.company-info span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.company-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: right;
+    font-size: 13px;
+    color: #c5cbd2;
+}
+
+.company-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.company-actions button {
+    padding: 7px 14px;
+    font-size: 12px;
+}
+
+/* =========================================================
+   REQUEST ROWS
+   ========================================================= */
+
+.request-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 0;
+    border-bottom: 1px solid #1b2229;
+}
+
+.request-row:last-child {
+    border-bottom: none;
+}
+
+.request-row > div:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.request-row strong {
+    font-size: 14px;
+}
+
+.request-row span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.request-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.request-actions input {
+    width: 100px;
+    margin: 0;
+}
+
+.request-actions button {
+    padding: 7px 14px;
+    font-size: 12px;
+}
+
+/* =========================================================
+   TIER DETAILS
+   ========================================================= */
+
+.tier-details {
+    margin-top: 10px;
+    padding: 12px;
+    background: #0a0e12;
+    border: 1px solid #1b2229;
+    border-radius: var(--radius-sm);
+}
+
+.tier-details p {
+    margin: 4px 0;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* =========================================================
+   LICENSE CARD BUTTONS
+   ========================================================= */
+
+.license-card button {
+    width: 100%;
+}
+
+/* =========================================================
+   FOUNDER INFO
+   ========================================================= */
+
+#asset-founder-info {
+    color: var(--green-bright);
+    font-size: 12px;
 }
 
 /* =========================================================
