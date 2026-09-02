@@ -161,6 +161,10 @@
                     <button onclick="loadMyCompanies()">
                         My Companies
                     </button>
+
+                    <button onclick="loadMessages()">
+                        Messages
+                    </button>
                 </div>
             </div>
 
@@ -661,6 +665,14 @@
                         type="button"
                         onclick="sendFriendRequest()">
                         Add Friend
+                    </button>
+
+                    <button
+                        id="public-profile-message-btn"
+                        type="button"
+                        class="secondary"
+                        onclick="loadChat()">
+                        Message
                     </button>
 
                 </div>
@@ -1430,6 +1442,60 @@
                 </div>
             </div>
 
+        </div>
+    </section>
+
+
+    <!-- =========================
+         MESSAGES / CONVERSATIONS
+    ========================== -->
+    <section id="messages-page" class="page hidden">
+        <div class="container">
+            <div class="topbar">
+                <div>
+                    <h1>Messages</h1>
+                    <p>Your conversations</p>
+                </div>
+                <button class="secondary" onclick="loadDashboard()">Dashboard</button>
+            </div>
+
+            <div class="card">
+                <div id="conversations-list">
+                    <p style="color:var(--muted);">No messages yet.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- =========================
+         CHAT
+    ========================== -->
+    <section id="chat-page" class="page hidden">
+        <div class="container">
+            <div class="topbar">
+                <div class="chat-topbar">
+                    <button class="link-button" onclick="loadMessages()">← Back</button>
+                    <div class="chat-partner-info">
+                        <div class="people-avatar" id="chat-partner-avatar-wrapper">
+                            <img id="chat-partner-avatar" class="hidden" src="" alt="">
+                            <div id="chat-partner-avatar-placeholder" class="mkm-avatar-placeholder">?</div>
+                        </div>
+                        <div>
+                            <h1 id="chat-partner-name">Chat</h1>
+                            <p id="chat-partner-username">@—</p>
+                        </div>
+                    </div>
+                </div>
+                <button class="secondary" onclick="loadDashboard()">Dashboard</button>
+            </div>
+
+            <div class="card chat-card">
+                <div id="chat-messages" class="chat-messages"></div>
+                <div class="chat-input-area">
+                    <input id="chat-input" type="text" placeholder="Type a message..." maxlength="500">
+                    <button onclick="sendChatMessage()">Send</button>
+                </div>
+            </div>
         </div>
     </section>
 
