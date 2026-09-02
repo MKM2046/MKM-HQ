@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MKM HQ</title>
     <link rel="stylesheet" href="style.css">
+<base target="_blank">
 </head>
 
 <body>
@@ -156,6 +157,10 @@
                         onclick="loadAdminPanel()">
                         Admin
                     </button>
+
+                    <button onclick="loadMyCompanies()">
+                        My Companies
+                    </button>
                 </div>
             </div>
 
@@ -178,7 +183,29 @@
                         <strong>Created:</strong>
                         <span id="account-created">—</span>
                     </p>
+
+                    <p>
+                        <strong>License:</strong>
+                        <span id="account-license">—</span>
+                    </p>
                 </div>
+            </div>
+
+            <!-- Redeem Code -->
+            <div class="card">
+                <h2>Redeem Code</h2>
+                <div class="redeem-section">
+                    <input id="redeem-code-input" type="text" placeholder="Enter code..." maxlength="40">
+                    <button onclick="redeemCode()">Redeem</button>
+                </div>
+                <p id="redeem-message" class="message"></p>
+            </div>
+
+            <!-- Company License -->
+            <div class="card license-card" id="license-dashboard-card">
+                <h2>Company License</h2>
+                <p id="dashboard-license-text">Loading...</p>
+                <button id="dashboard-license-btn" class="hidden" onclick="buyCompanyLicense()">Buy License</button>
             </div>
 
         </div>
@@ -1279,6 +1306,30 @@
 
             </div>
 
+            <!-- Redemption Codes -->
+            <div class="card">
+                <h2>Redemption Codes</h2>
+                <form id="redeem-code-form">
+                    <label for="code-value">Code</label>
+                    <input id="code-value" type="text" placeholder="e.g. WELCOME2024" required style="text-transform:uppercase;">
+
+                    <label for="code-reward">Reward (€)</label>
+                    <input id="code-reward" type="number" min="1" step="1" required>
+
+                    <label for="code-uses">Max Uses</label>
+                    <input id="code-uses" type="number" min="1" step="1" value="1" required>
+
+                    <label for="code-expiry">Expires At (optional)</label>
+                    <input id="code-expiry" type="datetime-local">
+
+                    <button type="submit">Create Code</button>
+                </form>
+                <p id="code-message" class="message"></p>
+
+                <h3 style="margin-top:24px;margin-bottom:12px;">Active Codes</h3>
+                <div id="admin-codes-list"></div>
+            </div>
+
         </div>
     </section>
 
@@ -1320,6 +1371,67 @@
     <script src="https://cdn.jsdelivr.net/npm/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 
     <script src="app.js"></script>
+
+
+    <!-- =========================
+         MY COMPANIES
+    ========================== -->
+    <section id="my-companies" class="page hidden">
+        <div class="container">
+
+            <div class="topbar">
+                <div>
+                    <h1>My Companies</h1>
+                    <p>Establish and manage your own companies</p>
+                </div>
+                <button class="secondary" onclick="loadDashboard()">Dashboard</button>
+            </div>
+
+            <!-- License Status -->
+            <div id="license-status-card" class="card">
+                <h3>Company License</h3>
+                <p id="license-status-text">Checking...</p>
+                <button id="buy-license-btn" class="hidden" onclick="buyCompanyLicense()">Buy License</button>
+            </div>
+
+            <!-- Establish Form -->
+            <div id="establish-form-card" class="card hidden">
+                <h2>Establish New Company</h2>
+                <form id="establish-form">
+                    <label for="establish-name">Company Name</label>
+                    <input id="establish-name" type="text" required>
+
+                    <label for="establish-symbol">Symbol</label>
+                    <input id="establish-symbol" type="text" required maxlength="10" style="text-transform:uppercase;">
+
+                    <label for="establish-category">Category</label>
+                    <select id="establish-category">
+                        <option value="stock">Stock</option>
+                        <option value="index">Index</option>
+                        <option value="commodity">Commodity</option>
+                    </select>
+
+                    <label for="establish-price">Starting Price (€)</label>
+                    <input id="establish-price" type="number" min="0.01" step="0.01" required>
+
+                    <label for="establish-shares">Shares Outstanding</label>
+                    <input id="establish-shares" type="number" min="1" step="1" required>
+
+                    <button type="submit">Establish Company</button>
+                </form>
+                <p id="establish-message" class="message"></p>
+            </div>
+
+            <!-- Company List -->
+            <div class="card">
+                <h2>Your Companies</h2>
+                <div id="my-companies-list">
+                    <p style="color:var(--muted);">No companies established yet.</p>
+                </div>
+            </div>
+
+        </div>
+    </section>
 
 </body>
 </html>

@@ -26,6 +26,8 @@ const supabaseClient = createClient(
 const MKM_OWNER_ID =
     "dbba8502-f01b-4e86-aa42-aa5899ce771d";
 
+const LICENSE_PRICE = 5000;
+
 let currentUser = null;
 let currentProfile = null;
 let currentAsset = null;
@@ -331,6 +333,26 @@ async function loadDashboard() {
         "account-created",
         formatDate(profile.created_at)
     );
+
+    setText(
+        "account-license",
+        profile.company_license ? "Licensed" : "None"
+    );
+
+    const licenseText = document.getElementById("dashboard-license-text");
+    const licenseBtn = document.getElementById("dashboard-license-btn");
+    if (licenseText) {
+        if (profile.company_license) {
+            licenseText.innerHTML = `<span style="color:#22c55e;font-weight:700;">Licensed</span> — You can establish companies.`;
+            if (licenseBtn) licenseBtn.classList.add("hidden");
+        } else {
+            licenseText.innerHTML = `Status: <span style="color:#94a3b8;">No license</span> — Purchase a license to establish your own companies.`;
+            if (licenseBtn) {
+                licenseBtn.classList.remove("hidden");
+                licenseBtn.textContent = `Buy License (${formatMoney(LICENSE_PRICE)})`;
+            }
+        }
+    }
 
     const portfolioValue =
         await calculatePortfolioValue();
@@ -2827,6 +2849,7 @@ async function loadAdminPanel() {
 
     await loadAdminAssets();
     await loadMarketSettings();
+    await loadAdminCodes();
 
     showPage("admin");
 }
@@ -3701,6 +3724,294 @@ async function loadNews() {
 
 
 // ============================================================
+// CODE REDEMPTION
+// ============================================================
+
+async function redeemCode() {
+    const input = document.getElementById("redeem-code-input");
+    const message = document.getElementById("redeem-message");
+    const code = input?.value.trim();
+
+    if (!code) {
+        if (message) { message.textContent = "Enter a code."; message.style.color = "#ef4444"; }
+        return;
+    }
+    if (!currentUser) {
+        if (message) { message.textContent = "Please log in."; message.style.color = "#ef4444"; }
+        return;
+    }
+
+    if (message) { message.textContent = "Redeeming..."; message.style.color = ""; }
+
+    try {
+        const { data, error } = await supabaseClient.rpc("redeem_code", {
+            p_code: code,
+            p_user_id: currentUser.id
+        });
+        if (error) throw error;
+
+        if (data.success) {
+            if (message) {
+                message.textContent = `${data.message} +${formatMoney(data.reward)}`;
+                message.style.color = "#22c55e";
+            }
+            if (input) input.value = "";
+            await loadDashboardDataOnly();
+        } else {
+            if (message) { message.textContent = data.message; message.style.color = "#ef4444"; }
+        }
+    } catch (err) {
+        console.error("Redeem error:", err);
+        if (message) { message.textContent = err.message || "Redemption failed."; message.style.color = "#ef4444"; }
+    }
+}
+
+
+// ============================================================
+// COMPANY LICENSE
+// ============================================================
+
+async function buyCompanyLicense() {
+    if (!currentUser) { alert("Please log in."); return; }
+
+    const confirmation = confirm(
+        `Buy a company license for ${formatMoney(LICENSE_PRICE)}?\n\n` +
+        `This allows you to establish your own companies on MKM HQ.`
+    );
+    if (!confirmation) return;
+
+    try {
+        const { data, error } = await supabaseClient.rpc("buy_company_license", {
+            p_user_id: currentUser.id,
+            p_price: LICENSE_PRICE
+        });
+        if (error) throw error;
+
+        if (data.success) {
+            alert(data.message);
+            await loadDashboardDataOnly();
+            const myCompaniesPage = document.getElementById("my-companies");
+            if (myCompaniesPage && !myCompaniesPage.classList.contains("hidden")) {
+                await loadMyCompanies();
+            } else {
+                await loadDashboard();
+            }
+        } else {
+            alert(data.message);
+        }
+    } catch (err) {
+        console.error("License purchase error:", err);
+        alert(err.message || "Could not purchase license.");
+    }
+}
+
+
+// ============================================================
+// MY COMPANIES
+// ============================================================
+
+async function loadMyCompanies() {
+    if (!currentUser) { await checkSession(); return; }
+
+    const { data: profile } = await supabaseClient
+        .from("Profiles")
+        .select("company_license, license_purchased_at, balance")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+    renderLicenseStatus(profile);
+
+    const { data: companies, error } = await supabaseClient
+        .from("Assets")
+        .select("*")
+        .eq("created_by_user_id", currentUser.id)
+        .order("created_at", { ascending: false });
+
+    if (error) console.error(error);
+    renderMyCompaniesList(companies || []);
+
+    showPage("my-companies");
+}
+
+
+function renderLicenseStatus(profile) {
+    const text = document.getElementById("license-status-text");
+    const btn = document.getElementById("buy-license-btn");
+    const formCard = document.getElementById("establish-form-card");
+
+    if (!text) return;
+
+    const hasLicense = profile?.company_license === true;
+
+    if (hasLicense) {
+        text.innerHTML = `<span style="color:#22c55e;font-weight:700;">Licensed</span> — You can establish companies.`;
+        if (btn) btn.classList.add("hidden");
+        if (formCard) formCard.classList.remove("hidden");
+    } else {
+        text.innerHTML = `Status: <span style="color:#94a3b8;">No license</span> — Purchase a license to establish your own companies.`;
+        if (btn) {
+            btn.classList.remove("hidden");
+            btn.textContent = `Buy License (${formatMoney(LICENSE_PRICE)})`;
+        }
+        if (formCard) formCard.classList.add("hidden");
+    }
+}
+
+
+function renderMyCompaniesList(companies) {
+    const container = document.getElementById("my-companies-list");
+    if (!container) return;
+
+    if (!companies.length) {
+        container.innerHTML = `<p style="color:#94a3b8;">No companies established yet.</p>`;
+        return;
+    }
+
+    container.innerHTML = "";
+    companies.forEach(asset => {
+        const row = document.createElement("div");
+        row.className = "admin-company-row";
+        row.style.cursor = "pointer";
+        row.innerHTML = `
+            <div>
+                <strong>${escapeHTML(asset.name)}</strong>
+                <span>${escapeHTML(asset.symbol)} · ${escapeHTML(asset.category)}</span>
+            </div>
+            <div>${formatMoney(asset.price)}</div>
+            <div>${formatMoney(asset.market_cap || 0)}</div>
+        `;
+        row.addEventListener("click", () => loadAssetDetail(asset.id));
+        container.appendChild(row);
+    });
+}
+
+
+async function establishCompany(event) {
+    event.preventDefault();
+    if (!currentUser) return;
+
+    const message = document.getElementById("establish-message");
+    const name = document.getElementById("establish-name")?.value.trim();
+    const symbol = document.getElementById("establish-symbol")?.value.trim().toUpperCase();
+    const category = document.getElementById("establish-category")?.value;
+    const price = Number(document.getElementById("establish-price")?.value);
+    const shares = Number(document.getElementById("establish-shares")?.value);
+
+    if (!name || !symbol || !category || !Number.isFinite(price) || price <= 0 || !Number.isInteger(shares) || shares <= 0) {
+        if (message) { message.textContent = "Please fill in all fields correctly."; message.style.color = "#ef4444"; }
+        return;
+    }
+
+    if (message) { message.textContent = "Establishing..."; message.style.color = ""; }
+
+    try {
+        const { data, error } = await supabaseClient.rpc("create_user_company", {
+            p_user_id: currentUser.id,
+            p_name: name,
+            p_symbol: symbol,
+            p_category: category,
+            p_price: price,
+            p_shares: shares
+        });
+        if (error) throw error;
+
+        if (data.success) {
+            if (message) { message.textContent = data.message; message.style.color = "#22c55e"; }
+            document.getElementById("establish-form")?.reset();
+            if (data.asset_id) await recordPriceHistory(data.asset_id, price, price);
+            await loadMyCompanies();
+        } else {
+            if (message) { message.textContent = data.message; message.style.color = "#ef4444"; }
+        }
+    } catch (err) {
+        console.error("Establish error:", err);
+        if (message) { message.textContent = err.message || "Could not establish company."; message.style.color = "#ef4444"; }
+    }
+}
+
+
+// ============================================================
+// ADMIN: REDEMPTION CODES
+// ============================================================
+
+async function loadAdminCodes() {
+    if (!currentUser || currentUser.id !== MKM_OWNER_ID) return;
+
+    const { data: codes, error } = await supabaseClient
+        .from("RedemptionCodes")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+    if (error) { console.error(error); return; }
+
+    const container = document.getElementById("admin-codes-list");
+    if (!container) return;
+
+    if (!codes || !codes.length) {
+        container.innerHTML = "<p style=\"color:#94a3b8;\">No codes created yet.</p>";
+        return;
+    }
+
+    container.innerHTML = "";
+    codes.forEach(code => {
+        const row = document.createElement("div");
+        row.className = "code-row";
+        const expired = code.expires_at && new Date(code.expires_at) < new Date();
+        const status = !code.active ? "Inactive" : expired ? "Expired" : code.uses_count >= code.max_uses ? "Used Up" : "Active";
+        const statusColor = status === "Active" ? "#22c55e" : "#ef4444";
+
+        row.innerHTML = `
+            <div>
+                <strong>${escapeHTML(code.code)}</strong>
+                <span>${formatMoney(code.reward_amount)} · ${code.uses_count}/${code.max_uses} uses</span>
+            </div>
+            <div style="color:${statusColor};font-weight:700;">${status}</div>
+            <div>${code.expires_at ? formatDateTime(code.expires_at) : "No expiry"}</div>
+        `;
+        container.appendChild(row);
+    });
+}
+
+
+async function createRedemptionCode(event) {
+    event.preventDefault();
+    if (!currentUser || currentUser.id !== MKM_OWNER_ID) return;
+
+    const message = document.getElementById("code-message");
+    const codeVal = document.getElementById("code-value")?.value.trim().toUpperCase();
+    const reward = Number(document.getElementById("code-reward")?.value);
+    const maxUses = Number(document.getElementById("code-uses")?.value);
+    const expiryVal = document.getElementById("code-expiry")?.value;
+
+    if (!codeVal || !Number.isFinite(reward) || reward <= 0 || !Number.isInteger(maxUses) || maxUses <= 0) {
+        if (message) { message.textContent = "Enter valid code details."; message.style.color = "#ef4444"; }
+        return;
+    }
+
+    let expiresAt = null;
+    if (expiryVal) expiresAt = new Date(expiryVal).toISOString();
+
+    try {
+        const { error } = await supabaseClient.from("RedemptionCodes").insert({
+            code: codeVal,
+            reward_amount: reward,
+            max_uses: maxUses,
+            expires_at: expiresAt,
+            created_by: currentUser.id
+        });
+        if (error) throw error;
+
+        if (message) { message.textContent = "Code created successfully."; message.style.color = "#22c55e"; }
+        document.getElementById("redeem-code-form")?.reset();
+        await loadAdminCodes();
+    } catch (err) {
+        console.error("Code creation error:", err);
+        if (message) { message.textContent = err.message || "Could not create code."; message.style.color = "#ef4444"; }
+    }
+}
+
+
+// ============================================================
 // GLOBAL SESSION LISTENER
 // ============================================================
 
@@ -3808,6 +4119,50 @@ document.addEventListener(
         tradeShares?.addEventListener(
             "input",
             updateTradePreview
+        );
+
+        /*
+         * Establish company form
+         */
+        const establishForm =
+            document.getElementById(
+                "establish-form"
+            );
+
+        establishForm?.addEventListener(
+            "submit",
+            establishCompany
+        );
+
+        /*
+         * Redemption code form (admin)
+         */
+        const redeemCodeForm =
+            document.getElementById(
+                "redeem-code-form"
+            );
+
+        redeemCodeForm?.addEventListener(
+            "submit",
+            createRedemptionCode
+        );
+
+        /*
+         * Redeem code on Enter key
+         */
+        const redeemInput =
+            document.getElementById(
+                "redeem-code-input"
+            );
+
+        redeemInput?.addEventListener(
+            "keydown",
+            event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    redeemCode();
+                }
+            }
         );
     }
 );
