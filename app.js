@@ -3992,18 +3992,21 @@ async function createRedemptionCode(event) {
     if (expiryVal) expiresAt = new Date(expiryVal).toISOString();
 
     try {
-        const { error } = await supabaseClient.from("RedemptionCodes").insert({
-            code: codeVal,
-            reward_amount: reward,
-            max_uses: maxUses,
-            expires_at: expiresAt,
-            created_by: currentUser.id
+        const { data, error } = await supabaseClient.rpc("create_redemption_code", {
+            p_code: codeVal,
+            p_reward: reward,
+            p_max_uses: maxUses,
+            p_expires_at: expiresAt
         });
         if (error) throw error;
 
-        if (message) { message.textContent = "Code created successfully."; message.style.color = "#22c55e"; }
-        document.getElementById("redeem-code-form")?.reset();
-        await loadAdminCodes();
+        if (data.success) {
+            if (message) { message.textContent = data.message; message.style.color = "#22c55e"; }
+            document.getElementById("redeem-code-form")?.reset();
+            await loadAdminCodes();
+        } else {
+            if (message) { message.textContent = data.message; message.style.color = "#ef4444"; }
+        }
     } catch (err) {
         console.error("Code creation error:", err);
         if (message) { message.textContent = err.message || "Could not create code."; message.style.color = "#ef4444"; }
