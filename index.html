@@ -146,6 +146,10 @@
                         Profile
                     </button>
 
+                    <button onclick="loadSocial()">
+                        People
+                    </button>
+
                     <button
                         id="admin-button"
                         class="hidden"
@@ -256,16 +260,204 @@
     </section>
 
 
+
+
+<!-- =========================
+     PROFILE
+========================== -->
+<section id="profile-page" class="page hidden">
+
+    <div class="container">
+
+        <div class="topbar">
+
+            <div>
+                <h1>Profile</h1>
+                <p>Your MKM HQ identity</p>
+            </div>
+
+            <button
+                class="secondary"
+                onclick="loadDashboard()">
+                Dashboard
+            </button>
+
+        </div>
+
+
+        <!-- Profile card -->
+        <div class="card mkm-profile-card">
+
+            <div class="mkm-profile-header">
+
+                <div class="mkm-avatar-wrapper">
+
+                    <img
+                        id="profile-avatar"
+                        class="mkm-profile-avatar"
+                        src=""
+                        alt="Profile picture"
+                    >
+
+                    <div
+                        id="profile-avatar-placeholder"
+                        class="mkm-avatar-placeholder">
+                        ?
+                    </div>
+
+                </div>
+
+
+                <div class="mkm-profile-main">
+
+                    <h1 id="profile-display-name">
+                        —
+                    </h1>
+
+                    <p
+                        id="profile-username"
+                        class="mkm-profile-username">
+                        @—
+                    </p>
+
+                    <span
+                        id="profile-status"
+                        class="mkm-status-badge">
+                        Active
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="mkm-profile-bio">
+
+                <p id="profile-bio">
+                    No bio.
+                </p>
+
+            </div>
+
+
+            <div class="mkm-profile-details">
+
+                <div>
+                    <span>MKM ID</span>
+                    <strong id="profile-mkm-id">
+                        —
+                    </strong>
+                </div>
+
+                <div>
+                    <span>Joined</span>
+                    <strong id="profile-created">
+                        —
+                    </strong>
+                </div>
+
+            </div>
+
+
+            <div class="mkm-profile-actions">
+
+                <button
+                    type="button"
+                    onclick="openProfileEditor()">
+                    Edit Profile
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <!-- Edit profile -->
+        <div
+            id="profile-editor"
+            class="card hidden">
+
+            <h2>Edit Profile</h2>
+
+            <label for="profile-display-input">
+                Display name
+            </label>
+
+            <input
+                id="profile-display-input"
+                type="text"
+                maxlength="40"
+                placeholder="Your display name"
+            >
+
+
+            <label for="profile-bio-input">
+                Bio
+            </label>
+
+            <textarea
+                id="profile-bio-input"
+                maxlength="160"
+                rows="4"
+                placeholder="Tell people about yourself..."
+            ></textarea>
+
+
+            <label for="profile-avatar-input">
+                Profile picture
+            </label>
+
+            <input
+                id="profile-avatar-input"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+            >
+
+            <p class="message">
+                JPG, PNG or WebP. Max 5 MB.
+            </p>
+
+
+            <div class="mkm-profile-editor-actions">
+
+                <button
+                    type="button"
+                    onclick="saveProfile()">
+                    Save Changes
+                </button>
+
+                <button
+                    type="button"
+                    class="secondary"
+                    onclick="closeProfileEditor()">
+                    Cancel
+                </button>
+
+            </div>
+
+
+            <p
+                id="profile-edit-message"
+                class="message">
+            </p>
+
+        </div>
+
+    </div>
+
+</section>
+
+
     <!-- =========================
-         PROFILE
+         PEOPLE / FRIEND REQUESTS
     ========================== -->
-    <section id="profile-page" class="page hidden">
+    <section id="social" class="page hidden">
         <div class="container">
 
             <div class="topbar">
                 <div>
-                    <h1>Profile</h1>
-                    <p>Your MKM HQ account</p>
+                    <h1>People</h1>
+                    <p>Find people, send requests and manage your friends.</p>
                 </div>
 
                 <button class="secondary" onclick="loadDashboard()">
@@ -273,31 +465,182 @@
                 </button>
             </div>
 
+            <!-- Search people -->
             <div class="card">
+                <h2>Find People</h2>
 
-                <p>
-                    <strong>Username:</strong>
-                    <span id="profile-username">—</span>
-                </p>
+                <div class="social-search">
+                    <input
+                        id="people-search"
+                        type="text"
+                        placeholder="Search by username or display name..."
+                        autocomplete="off"
+                    >
 
-                <p>
-                    <strong>Display name:</strong>
-                    <span id="profile-display-name">—</span>
-                </p>
+                    <button type="button" onclick="searchPeople()">
+                        Search
+                    </button>
+                </div>
 
-                <p>
-                    <strong>MKM ID:</strong>
-                    <span id="profile-mkm-id">—</span>
-                </p>
+                <p id="people-search-message" class="message"></p>
 
-                <p>
-                    <strong>Status:</strong>
-                    <span id="profile-status">—</span>
-                </p>
+                <div id="people-search-results">
+                    <p>Search for someone to view their profile.</p>
+                </div>
+            </div>
 
-                <p>
-                    <strong>Bio:</strong>
-                    <span id="profile-bio">—</span>
+            <!-- Incoming requests -->
+            <div class="card">
+                <div class="social-section-header">
+                    <div>
+                        <h2>Friend Requests</h2>
+                        <p>People who want to connect with you.</p>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="secondary"
+                        onclick="loadFriendRequests()">
+                        Refresh
+                    </button>
+                </div>
+
+                <div id="friend-requests-list">
+                    <p>No friend requests yet.</p>
+                </div>
+            </div>
+
+            <!-- Friends -->
+            <div class="card">
+                <div class="social-section-header">
+                    <div>
+                        <h2>Friends</h2>
+                        <p>Your accepted connections.</p>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="secondary"
+                        onclick="loadFriends()">
+                        Refresh
+                    </button>
+                </div>
+
+                <div id="friends-list">
+                    <p>No friends yet.</p>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+
+    <!-- =========================
+         PUBLIC PROFILE
+    ========================== -->
+    <section id="public-profile" class="page hidden">
+        <div class="container">
+
+            <div class="topbar">
+                <div>
+                    <button
+                        class="link-button"
+                        onclick="loadSocial()">
+                        ← Back to People
+                    </button>
+
+                    <h1>Profile</h1>
+                    <p>Public MKM HQ profile</p>
+                </div>
+
+                <button
+                    class="secondary"
+                    onclick="loadDashboard()">
+                    Dashboard
+                </button>
+            </div>
+
+            <div class="card mkm-profile-card">
+
+                <div class="mkm-profile-header">
+
+                    <div class="mkm-avatar-wrapper">
+
+                        <img
+                            id="public-profile-avatar"
+                            class="mkm-profile-avatar"
+                            src=""
+                            alt="Profile picture"
+                        >
+
+                        <div
+                            id="public-profile-avatar-placeholder"
+                            class="mkm-avatar-placeholder">
+                            ?
+                        </div>
+
+                    </div>
+
+                    <div class="mkm-profile-main">
+
+                        <h1 id="public-profile-display-name">
+                            —
+                        </h1>
+
+                        <p
+                            id="public-profile-username"
+                            class="mkm-profile-username">
+                            @—
+                        </p>
+
+                        <span
+                            id="public-profile-status"
+                            class="mkm-status-badge">
+                            Active
+                        </span>
+
+                    </div>
+
+                </div>
+
+                <div class="mkm-profile-bio">
+                    <p id="public-profile-bio">
+                        No bio.
+                    </p>
+                </div>
+
+                <div class="mkm-profile-details">
+
+                    <div>
+                        <span>MKM ID</span>
+                        <strong id="public-profile-mkm-id">
+                            —
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>Joined</span>
+                        <strong id="public-profile-created">
+                            —
+                        </strong>
+                    </div>
+
+                </div>
+
+                <div class="mkm-profile-actions">
+
+                    <button
+                        id="public-profile-action"
+                        type="button"
+                        onclick="sendFriendRequest()">
+                        Add Friend
+                    </button>
+
+                </div>
+
+                <p
+                    id="public-profile-message"
+                    class="message">
                 </p>
 
             </div>
