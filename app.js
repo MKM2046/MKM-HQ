@@ -1,40 +1,55 @@
 // ============================================================
 // MKM HQ - APP.JS
-// Supabase + Market + Admin + News + Simulated Market Engine
 // ============================================================
 
-console.log("MKM app.js loaded");
+// ------------------------------------------------------------
+// SUPABASE
+// ------------------------------------------------------------
 
 const SUPABASE_URL = "https://yvrtjegyfschjflhmgwb.supabase.co";
-const SUPABASE_KEY = "sb_publishable_k8Rwx4wS7_VV-Iiqgt7wYg_W1IFh8P-";
 
-const supabaseClient = window.supabase.createClient(
+const SUPABASE_KEY =
+    "sb_publishable_k8Rwx4wS7_VV-Iiqgt7wYg_W1IFh8P-";
+
+const { createClient } = window.supabase;
+
+const supabaseClient = createClient(
     SUPABASE_URL,
     SUPABASE_KEY
 );
 
-const MKM_OWNER_ID = "dbba8502-f01b-4e86-aa42-aa5899ce771d";
+
+// ------------------------------------------------------------
+// CONSTANTS
+// ------------------------------------------------------------
+
+const MKM_OWNER_ID =
+    "dbba8502-f01b-4e86-aa42-aa5899ce771d";
 
 let currentUser = null;
+let currentProfile = null;
+let currentAsset = null;
+
 let marketAssets = [];
-let selectedMarketCategory = "All";
+let currentMarketCategory = "all";
 
-let currentChart = null;
-let currentChartSeries = null;
-let currentChartAssetId = null;
+let chart = null;
+let candleSeries = null;
+let volumeSeries = null;
+
 let currentChartPeriod = "1D";
-let chartResizeObserver = null;
+let currentTradeSide = "buy";
 
-let marketEngineTimer = null;
+let marketTimer = null;
 
 
-// ============================================================
-// PAGE NAVIGATION
-// ============================================================
+// ------------------------------------------------------------
+// PAGE MANAGEMENT
+// ------------------------------------------------------------
 
 function showPage(pageId) {
+
     document.querySelectorAll(".page").forEach(page => {
-        page.classList.remove("active");
         page.classList.add("hidden");
     });
 
@@ -42,385 +57,230 @@ function showPage(pageId) {
 
     if (page) {
         page.classList.remove("hidden");
-        page.classList.add("active");
     }
 
-    window.scrollTo(0, 0);
-
-    if (pageId === "dashboard") {
-        loadDashboard();
-    }
-
-    if (pageId === "market") {
-        loadMarketData();
-    }
-
-    if (pageId === "admin") {
-        loadAdminData();
-    }
-
-    if (pageId === "news") {
-        loadNews();
-    }
-}
-
-
-// ============================================================
-// OWNER / ADMIN ACCESS
-// ============================================================
-
-function isMKMOwner(user) {
-    return user && user.id === MKM_OWNER_ID;
-}
-
-
-function setupAdminAccess(user) {
-    const adminButtons = document.querySelectorAll(
-        ".admin-link, [data-page='admin']"
-    );
-
-    adminButtons.forEach(button => {
-        button.style.display =
-            isMKMOwner(user) ? "" : "none";
-    });
-
-    document.querySelectorAll(".action").forEach(button => {
-        if (
-            button.textContent
-                .trim()
-                .toLowerCase() === "admin panel"
-        ) {
-            button.style.display =
-                isMKMOwner(user) ? "" : "none";
-        }
+    window.scrollTo({
+        top: 0,
+        behavior: "smooth"
     });
 }
 
 
-// ============================================================
-// REGISTER
-// ============================================================
+// ------------------------------------------------------------
+// AUTH
+// ------------------------------------------------------------
 
-async function register() {
-    const username =
-        document.getElementById("username")?.value.trim();
-
-    const email =
-        document.getElementById("email")?.value.trim();
-
-    const password =
-        document.getElementById("password")?.value;
+async function register(username, email, password) {
 
     const message =
         document.getElementById("signup-message");
 
     if (message) {
-        message.textContent = "";
-    }
-
-    if (!username || !email || !password) {
-        if (message) {
-            message.textContent =
-                "Please fill in all fields.";
-        }
-
-        return;
+        message.textContent = "Creating account...";
     }
 
     try {
-        const { data, error } =
-            await supabaseClient.auth.signUp({
-                email,
-                password
-            });
+
+        const {
+            data,
+            error
+        } = await supabaseClient.auth.signUp({
+            email,
+            password
+        });
 
         if (error) {
-            console.error(
-                "Registration error:",
-                error
-            );
-
-            if (message) {
-                message.textContent =
-                    error.message;
-            }
-
-            return;
+            throw error;
         }
 
         if (!data.user) {
-            if (message) {
-                message.textContent =
-                    "Account created. Please check your email.";
-            }
-
-            return;
+            throw new Error("Account could not be created.");
         }
 
-        const { error: profileError } =
-            await supabaseClient
-                .from("Profiles")
-                .insert({
-                    id: data.user.id,
-                    username: username,
-                    display_name: username,
-                    balance: 100000,
-                    status: "active"
-                });
+        const mkmId =
+            generateMKMId();
+
+        const {
+            error: profileError
+        } = await supabaseClient
+            .from("Profiles")
+            .insert({
+                id: data.user.id,
+                mkm_id: mkmId,
+                username: username,
+                display_name: username,
+                bio: "",
+                status: "active"
+            });
 
         if (profileError) {
-            console.error(
-                "Profile creation error:",
-                profileError
-            );
-
-            if (message) {
-                message.textContent =
-                    "Account created, but your profile could not be created.";
-            }
-
-            return;
+            throw profileError;
         }
 
         if (message) {
             message.textContent =
-                "Account created successfully!";
+                "Account created. Check your email if confirmation is required.";
         }
 
         document
             .getElementById("signup-form")
             ?.reset();
 
-        setTimeout(() => {
-            showPage("login");
-        }, 1000);
-
     } catch (error) {
-        console.error(
-            "Unexpected registration error:",
-            error
-        );
+
+        console.error(error);
 
         if (message) {
             message.textContent =
-                "Something went wrong while creating your account.";
+                error.message || "Registration failed.";
         }
     }
 }
 
 
-// ============================================================
-// LOGIN
-// ============================================================
+function generateMKMId() {
 
-async function login() {
-    console.log("LOGIN FUNCTION RAN");
+    const random =
+        Math.floor(
+            100000 +
+            Math.random() * 900000
+        );
 
-    const email =
-        document.getElementById("login-email")?.value.trim();
+    return `MKM-${random}`;
+}
 
-    const password =
-        document.getElementById("login-password")?.value;
+
+async function login(email, password) {
 
     const message =
         document.getElementById("login-message");
 
     if (message) {
-        message.textContent = "";
-    }
-
-    if (!email || !password) {
-        if (message) {
-            message.textContent =
-                "Please enter your email and password.";
-        }
-
-        return;
+        message.textContent = "Logging in...";
     }
 
     try {
-        const { data, error } =
-            await supabaseClient.auth.signInWithPassword({
-                email,
-                password
-            });
+
+        const {
+            data,
+            error
+        } = await supabaseClient.auth.signInWithPassword({
+            email,
+            password
+        });
 
         if (error) {
-            console.error(
-                "Login error:",
-                error
-            );
-
-            if (message) {
-                message.textContent =
-                    error.message;
-            }
-
-            return;
+            throw error;
         }
 
         currentUser = data.user;
 
-        setupAdminAccess(currentUser);
-
-        document
-            .getElementById("login-form")
-            ?.reset();
-
-        showPage("dashboard");
-
-        startMarketEngine();
+        await loadDashboard();
 
     } catch (error) {
-        console.error(
-            "Unexpected login error:",
-            error
-        );
+
+        console.error(error);
 
         if (message) {
             message.textContent =
-                "Something went wrong while logging in.";
+                error.message || "Login failed.";
         }
     }
 }
 
 
-// ============================================================
-// FORM SETUP
-// ============================================================
-
-function setupForms() {
-    const signupForm =
-        document.getElementById("signup-form");
-
-    if (signupForm) {
-        signupForm.addEventListener(
-            "submit",
-            async event => {
-                event.preventDefault();
-                await register();
-            }
-        );
-    }
-
-    const loginForm =
-        document.getElementById("login-form");
-
-    if (loginForm) {
-        loginForm.addEventListener(
-            "submit",
-            async event => {
-                event.preventDefault();
-                await login();
-            }
-        );
-    }
-
-    const companyForm =
-        document.getElementById("company-form");
-
-    if (companyForm) {
-        companyForm.addEventListener(
-            "submit",
-            async event => {
-                event.preventDefault();
-                await addCompany();
-            }
-        );
-    }
-}
-
-
-// ============================================================
-// LOGOUT
-// ============================================================
-
 async function logout() {
-    stopMarketEngine();
 
-    const { error } =
-        await supabaseClient.auth.signOut();
+    const {
+        error
+    } = await supabaseClient.auth.signOut();
 
     if (error) {
-        console.error(
-            "Logout error:",
-            error
-        );
+        console.error("Logout error:", error);
     }
 
     currentUser = null;
-
-    setupAdminAccess(null);
+    currentProfile = null;
+    currentAsset = null;
 
     showPage("landing");
 }
 
 
-// ============================================================
+// ------------------------------------------------------------
 // SESSION
-// ============================================================
+// ------------------------------------------------------------
 
 async function checkSession() {
-    const { data, error } =
-        await supabaseClient.auth.getSession();
 
-    if (error) {
+    try {
+
+        const {
+            data,
+            error
+        } = await supabaseClient.auth.getSession();
+
+        if (error) {
+            console.error("Session error:", error);
+            showPage("landing");
+            return;
+        }
+
+        if (data.session) {
+
+            currentUser =
+                data.session.user;
+
+            await loadDashboard();
+
+        } else {
+
+            showPage("landing");
+        }
+
+    } catch (error) {
+
         console.error(
-            "Session error:",
+            "Session check failed:",
             error
         );
 
-        showPage("landing");
-        return;
-    }
-
-    currentUser =
-        data.session?.user || null;
-
-    setupAdminAccess(currentUser);
-
-    if (currentUser) {
-        showPage("dashboard");
-        startMarketEngine();
-    } else {
         showPage("landing");
     }
 }
 
 
-supabaseClient.auth.onAuthStateChange(
-    (_event, session) => {
-        currentUser =
-            session?.user || null;
-
-        setupAdminAccess(currentUser);
-
-        if (currentUser) {
-            startMarketEngine();
-        } else {
-            stopMarketEngine();
-        }
-    }
-);
-
-
-// ============================================================
+// ------------------------------------------------------------
 // DASHBOARD
-// ============================================================
+// ------------------------------------------------------------
 
 async function loadDashboard() {
+
     if (!currentUser) {
-        return;
+
+        const {
+            data
+        } = await supabaseClient.auth.getUser();
+
+        if (!data.user) {
+            showPage("landing");
+            return;
+        }
+
+        currentUser = data.user;
     }
 
-    const { data: profile, error } =
-        await supabaseClient
-            .from("Profiles")
-            .select("*")
-            .eq("id", currentUser.id)
-            .maybeSingle();
+    const {
+        data: profile,
+        error
+    } = await supabaseClient
+        .from("Profiles")
+        .select("*")
+        .eq("id", currentUser.id)
+        .maybeSingle();
 
     if (error) {
+
         console.error(
             "Profile error:",
             error
@@ -429,171 +289,520 @@ async function loadDashboard() {
         return;
     }
 
+    currentProfile = profile;
+
     if (!profile) {
-        console.warn(
-            "No profile found."
+
+        console.error(
+            "No profile found for user."
         );
 
         return;
     }
 
-    const usernameElement =
-        document.getElementById(
-            "dashboard-username"
-        );
-
-    if (usernameElement) {
-        usernameElement.textContent =
-            profile.display_name ||
-            profile.username ||
-            "Member";
-    }
-
-    const mkmIdElement =
-        document.getElementById(
-            "dashboard-mkm-id"
-        );
-
-    if (mkmIdElement) {
-        mkmIdElement.textContent =
-            profile.mkm_id ||
-            "MKM-000000";
-    }
-
-    const balanceElement =
-        document.getElementById(
-            "balance"
-        );
-
-    if (balanceElement) {
-        balanceElement.textContent =
-            formatMoney(
-                profile.balance || 0
-            );
-    }
-
-    const portfolioElement =
-        document.getElementById(
-            "portfolio"
-        );
-
-    if (portfolioElement) {
-        portfolioElement.textContent =
-            formatMoney(
-                profile.balance || 0
-            );
-    }
-
-    const pnlElement =
-        document.getElementById(
-            "pnl"
-        );
-
-    if (pnlElement) {
-        pnlElement.textContent =
-            "+€0.00";
-    }
-
-    const statusElement =
-        document.getElementById(
-            "account-status"
-        );
-
-    if (statusElement) {
-        statusElement.textContent =
-            profile.status ||
-            "Member";
-    }
-
-    const accountUsername =
-        document.getElementById(
-            "account-username"
-        );
-
-    if (accountUsername) {
-        accountUsername.textContent =
-            profile.username ||
-            "—";
-    }
-
-    const createdElement =
-        document.getElementById(
-            "account-created"
-        );
-
-    if (createdElement) {
-        if (profile.created_at) {
-            createdElement.textContent =
-                new Date(
-                    profile.created_at
-                ).toLocaleDateString();
-        } else {
-            createdElement.textContent =
-                "—";
-        }
-    }
-}
-
-
-// ============================================================
-// MONEY FORMATTING
-// ============================================================
-
-function formatMoney(value) {
-    const number =
-        Number(value) || 0;
-
-    return new Intl.NumberFormat(
-        "en-US",
-        {
-            style: "currency",
-            currency: "USD",
-            maximumFractionDigits: 2
-        }
-    ).format(number);
-}
-
-
-function formatCompactMoney(value) {
-    const number =
-        Number(value) || 0;
-
-    if (number >= 1e12) {
-        return (
-            "$" +
-            (number / 1e12).toFixed(2) +
-            "T"
-        );
-    }
-
-    if (number >= 1e9) {
-        return (
-            "$" +
-            (number / 1e9).toFixed(2) +
-            "B"
-        );
-    }
-
-    if (number >= 1e6) {
-        return (
-            "$" +
-            (number / 1e6).toFixed(2) +
-            "M"
-        );
-    }
-
-    if (number >= 1e3) {
-        return (
-            "$" +
-            (number / 1e3).toFixed(2) +
-            "K"
-        );
-    }
-
-    return (
-        "$" +
-        number.toFixed(2)
+    setText(
+        "dashboard-username",
+        profile.display_name ||
+        profile.username ||
+        "User"
     );
+
+    setText(
+        "dashboard-mkm-id",
+        profile.mkm_id || "—"
+    );
+
+    setText(
+        "balance",
+        formatMoney(profile.balance || 0)
+    );
+
+    setText(
+        "account-status",
+        profile.status || "—"
+    );
+
+    setText(
+        "account-username",
+        profile.username || "—"
+    );
+
+    setText(
+        "account-created",
+        formatDate(profile.created_at)
+    );
+
+    const portfolioValue =
+        await calculatePortfolioValue();
+
+    setText(
+        "portfolio",
+        formatMoney(portfolioValue.value)
+    );
+
+    setText(
+        "pnl",
+        formatSignedMoney(portfolioValue.pnl)
+    );
+
+    const adminButton =
+        document.getElementById("admin-button");
+
+    if (adminButton) {
+
+        if (
+            currentUser.id ===
+            MKM_OWNER_ID
+        ) {
+
+            adminButton.classList.remove(
+                "hidden"
+            );
+
+        } else {
+
+            adminButton.classList.add(
+                "hidden"
+            );
+        }
+    }
+
+    showPage("dashboard");
+}
+
+
+// ------------------------------------------------------------
+// PORTFOLIO CALCULATIONS
+// ------------------------------------------------------------
+
+async function calculatePortfolioValue() {
+
+    if (!currentUser) {
+
+        return {
+            value: 0,
+            pnl: 0
+        };
+    }
+
+    const {
+        data: positions,
+        error
+    } = await supabaseClient
+        .from("Portfolios")
+        .select(`
+            *,
+            Assets (
+                id,
+                name,
+                symbol,
+                price
+            )
+        `)
+        .eq("user_id", currentUser.id);
+
+    if (error) {
+
+        console.error(
+            "Portfolio calculation error:",
+            error
+        );
+
+        return {
+            value: 0,
+            pnl: 0
+        };
+    }
+
+    let totalValue = 0;
+    let totalPnl = 0;
+
+    (positions || []).forEach(position => {
+
+        const price =
+            Number(
+                position.Assets?.price || 0
+            );
+
+        const shares =
+            Number(
+                position.shares || 0
+            );
+
+        const average =
+            Number(
+                position.average_price || 0
+            );
+
+        const value =
+            shares * price;
+
+        const pnl =
+            shares *
+            (price - average);
+
+        totalValue += value;
+        totalPnl += pnl;
+    });
+
+    return {
+        value: totalValue,
+        pnl: totalPnl
+    };
+}
+
+
+// ------------------------------------------------------------
+// PORTFOLIO PAGE
+// ------------------------------------------------------------
+
+async function loadPortfolio() {
+
+    if (!currentUser) {
+        await checkSession();
+        return;
+    }
+
+    const {
+        data: profile
+    } = await supabaseClient
+        .from("Profiles")
+        .select("balance")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+    const {
+        data: positions,
+        error
+    } = await supabaseClient
+        .from("Portfolios")
+        .select(`
+            *,
+            Assets (
+                id,
+                name,
+                symbol,
+                price
+            )
+        `)
+        .eq("user_id", currentUser.id)
+        .order("created_at", {
+            ascending: true
+        });
+
+    if (error) {
+
+        console.error(error);
+
+        setText(
+            "portfolio-list",
+            "Could not load portfolio."
+        );
+
+        showPage("portfolio-page");
+
+        return;
+    }
+
+    setText(
+        "portfolio-cash",
+        formatMoney(
+            profile?.balance || 0
+        )
+    );
+
+    let totalValue = 0;
+    let totalPnl = 0;
+
+    const container =
+        document.getElementById(
+            "portfolio-list"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    if (!positions || positions.length === 0) {
+
+        container.innerHTML =
+            "<p>No positions yet.</p>";
+
+    } else {
+
+        container.innerHTML = "";
+
+        positions.forEach(position => {
+
+            const asset =
+                position.Assets;
+
+            if (!asset) {
+                return;
+            }
+
+            const shares =
+                Number(
+                    position.shares || 0
+                );
+
+            const average =
+                Number(
+                    position.average_price || 0
+                );
+
+            const price =
+                Number(
+                    asset.price || 0
+                );
+
+            const value =
+                shares * price;
+
+            const pnl =
+                shares *
+                (price - average);
+
+            totalValue += value;
+            totalPnl += pnl;
+
+            const row =
+                document.createElement("div");
+
+            row.className =
+                "market-row";
+
+            row.innerHTML = `
+                <div>
+                    <strong>
+                        ${escapeHTML(asset.name)}
+                    </strong>
+
+                    <span>
+                        ${escapeHTML(asset.symbol)}
+                    </span>
+                </div>
+
+                <div>
+                    ${shares} shares
+                </div>
+
+                <div>
+                    Avg. ${formatMoney(average)}
+                </div>
+
+                <div>
+                    ${formatMoney(value)}
+                </div>
+
+                <div>
+                    ${formatSignedMoney(pnl)}
+                </div>
+
+                <button>
+                    Trade
+                </button>
+            `;
+
+            const button =
+                row.querySelector("button");
+
+            button?.addEventListener(
+                "click",
+                () => loadAssetDetail(asset.id)
+            );
+
+            container.appendChild(row);
+        });
+    }
+
+    setText(
+        "portfolio-total-value",
+        formatMoney(totalValue)
+    );
+
+    setText(
+        "portfolio-total-pnl",
+        formatSignedMoney(totalPnl)
+    );
+
+    showPage("portfolio-page");
+}
+
+
+// ------------------------------------------------------------
+// TRANSACTIONS
+// ------------------------------------------------------------
+
+async function loadTransactions() {
+
+    if (!currentUser) {
+        await checkSession();
+        return;
+    }
+
+    const {
+        data: transactions,
+        error
+    } = await supabaseClient
+        .from("Transactions")
+        .select(`
+            *,
+            Assets (
+                name,
+                symbol
+            )
+        `)
+        .eq("user_id", currentUser.id)
+        .order("created_at", {
+            ascending: false
+        });
+
+    const container =
+        document.getElementById(
+            "transactions-list"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    if (error) {
+
+        console.error(error);
+
+        container.innerHTML =
+            "<p>Could not load transactions.</p>";
+
+        showPage("transactions-page");
+
+        return;
+    }
+
+    if (
+        !transactions ||
+        transactions.length === 0
+    ) {
+
+        container.innerHTML =
+            "<p>No transactions yet.</p>";
+
+        showPage("transactions-page");
+
+        return;
+    }
+
+    container.innerHTML = "";
+
+    transactions.forEach(transaction => {
+
+        const row =
+            document.createElement("div");
+
+        row.className =
+            "market-row";
+
+        const side =
+            String(
+                transaction.side || ""
+            ).toUpperCase();
+
+        const sideClass =
+            transaction.side === "buy"
+                ? "positive"
+                : "negative";
+
+        row.innerHTML = `
+            <div>
+                <strong>
+                    ${escapeHTML(
+                        transaction.Assets?.name ||
+                        "Unknown asset"
+                    )}
+                </strong>
+
+                <span>
+                    ${escapeHTML(
+                        transaction.Assets?.symbol ||
+                        "—"
+                    )}
+                </span>
+            </div>
+
+            <div class="${sideClass}">
+                ${side}
+            </div>
+
+            <div>
+                ${Number(transaction.shares || 0)} shares
+            </div>
+
+            <div>
+                ${formatMoney(
+                    transaction.price || 0
+                )}
+            </div>
+
+            <div>
+                ${formatMoney(
+                    transaction.total || 0
+                )}
+            </div>
+
+            <div>
+                ${formatDateTime(
+                    transaction.created_at
+                )}
+            </div>
+        `;
+
+        container.appendChild(row);
+    });
+
+    showPage("transactions-page");
+}
+
+
+// ------------------------------------------------------------
+// PROFILE
+// ------------------------------------------------------------
+
+async function loadProfile() {
+
+    if (!currentProfile) {
+        await loadDashboard();
+    }
+
+    if (!currentProfile) {
+        return;
+    }
+
+    setText(
+        "profile-username",
+        currentProfile.username || "—"
+    );
+
+    setText(
+        "profile-display-name",
+        currentProfile.display_name || "—"
+    );
+
+    setText(
+        "profile-mkm-id",
+        currentProfile.mkm_id || "—"
+    );
+
+    setText(
+        "profile-status",
+        currentProfile.status || "—"
+    );
+
+    setText(
+        "profile-bio",
+        currentProfile.bio || "No bio."
+    );
+
+    showPage("profile-page");
 }
 
 
@@ -602,1443 +811,1892 @@ function formatCompactMoney(value) {
 // ============================================================
 
 async function loadMarket() {
-    showPage("market");
-}
 
-
-async function loadMarketData() {
-    const list =
-        document.getElementById(
-            "market-list"
-        );
-
-    if (list) {
-        list.innerHTML =
-            `<div class="empty-state">
-                Loading market data...
-            </div>`;
-    }
-
-    const { data, error } =
-        await supabaseClient
-            .from("Assets")
-            .select("*")
-            .order(
-                "market_cap",
-                {
-                    ascending: false
-                }
-            );
+    const {
+        data: assets,
+        error
+    } = await supabaseClient
+        .from("Assets")
+        .select("*")
+        .order("market_cap", {
+            ascending: false,
+            nullsFirst: false
+        });
 
     if (error) {
+
         console.error(
             "Market error:",
             error
         );
 
-        if (list) {
-            list.innerHTML =
-                `<div class="empty-state">
-                    Unable to load market data.
-                </div>`;
-        }
-
         return;
     }
 
     marketAssets =
-        data || [];
+        assets || [];
 
     renderMarket();
+
+    showPage("market");
 }
 
 
 function renderMarket() {
-    renderOverview();
-    renderMovers();
-    renderAssetList();
-}
 
-
-// ============================================================
-// MARKET OVERVIEW
-// ============================================================
-
-function renderOverview() {
-    const countElement =
-        document.getElementById(
-            "market-count"
-        );
-
-    const capElement =
-        document.getElementById(
-            "market-cap"
-        );
-
-    const volumeElement =
-        document.getElementById(
-            "market-volume"
-        );
-
-    const filtered =
-        getFilteredMarketAssets();
-
-    if (countElement) {
-        countElement.textContent =
-            filtered.length;
-    }
-
-    const totalCap =
-        filtered.reduce(
-            (sum, asset) =>
-                sum +
-                (
-                    Number(
-                        asset.market_cap
-                    ) || 0
-                ),
-            0
-        );
-
-    const totalVolume =
-        filtered.reduce(
-            (sum, asset) =>
-                sum +
-                (
-                    Number(
-                        asset.volume
-                    ) || 0
-                ),
-            0
-        );
-
-    if (capElement) {
-        capElement.textContent =
-            formatCompactMoney(
-                totalCap
-            );
-    }
-
-    if (volumeElement) {
-        volumeElement.textContent =
-            formatCompactMoney(
-                totalVolume
-            );
-    }
-}
-
-
-// ============================================================
-// MARKET MOVERS
-// ============================================================
-
-function getChange(asset) {
-    const price =
-        Number(asset.price) || 0;
-
-    const previous =
-        Number(
-            asset.previous_price
-        ) || 0;
-
-    if (!previous) {
-        return 0;
-    }
-
-    return (
-        (
-            price - previous
-        ) /
-        previous
-    ) * 100;
-}
-
-
-function renderMovers() {
-    const gainersList =
-        document.getElementById(
-            "gainers-list"
-        );
-
-    const losersList =
-        document.getElementById(
-            "losers-list"
-        );
-
-    const filtered =
-        getFilteredMarketAssets();
-
-    const sorted =
-        [...filtered].sort(
-            (a, b) =>
-                getChange(b) -
-                getChange(a)
-        );
-
-    const gainers =
-        sorted
-            .filter(
-                asset =>
-                    getChange(asset) > 0
-            )
-            .slice(0, 5);
-
-    const losers =
-        sorted
-            .filter(
-                asset =>
-                    getChange(asset) < 0
-            )
-            .slice(0, 5);
-
-    if (gainersList) {
-        if (!gainers.length) {
-            gainersList.innerHTML =
-                `<div class="empty-state">
-                    No gainers
-                </div>`;
-        } else {
-            gainersList.innerHTML =
-                gainers
-                    .map(
-                        asset =>
-                            moverHTML(
-                                asset,
-                                true
-                            )
-                    )
-                    .join("");
-        }
-    }
-
-    if (losersList) {
-        if (!losers.length) {
-            losersList.innerHTML =
-                `<div class="empty-state">
-                    No losers
-                </div>`;
-        } else {
-            losersList.innerHTML =
-                losers
-                    .map(
-                        asset =>
-                            moverHTML(
-                                asset,
-                                false
-                            )
-                    )
-                    .join("");
-        }
-    }
-}
-
-
-function moverHTML(
-    asset,
-    positive
-) {
-    const change =
-        getChange(asset);
-
-    return `
-        <div
-            class="mover-row"
-            onclick="openAsset('${asset.id}')"
-        >
-
-            <div>
-                <strong>
-                    ${escapeHTML(
-                        asset.symbol || ""
-                    )}
-                </strong>
-
-                <span>
-                    ${escapeHTML(
-                        asset.name || ""
-                    )}
-                </span>
-            </div>
-
-            <div>
-                <strong>
-                    ${formatMoney(
-                        asset.price
-                    )}
-                </strong>
-
-                <span
-                    class="${
-                        positive
-                            ? "positive"
-                            : "negative"
-                    }"
-                >
-                    ${positive ? "+" : ""}
-                    ${change.toFixed(2)}%
-                </span>
-            </div>
-
-        </div>
-    `;
-}
-
-
-// ============================================================
-// MARKET LIST
-// ============================================================
-
-function renderAssetList() {
-    const list =
-        document.getElementById(
-            "market-list"
-        );
-
-    if (!list) {
-        return;
-    }
-
-    const assets =
-        getFilteredMarketAssets();
-
-    if (!assets.length) {
-        list.innerHTML =
-            `<div class="empty-state">
-                No assets found.
-            </div>`;
-
-        return;
-    }
-
-    list.innerHTML =
-        assets
-            .map(asset => {
-                const change =
-                    getChange(asset);
-
-                return `
-                    <div
-                        class="market-row"
-                        onclick="openAsset('${asset.id}')"
-                    >
-
-                        <div class="market-name">
-                            <strong>
-                                ${escapeHTML(
-                                    asset.symbol || ""
-                                )}
-                            </strong>
-
-                            <span>
-                                ${escapeHTML(
-                                    asset.name || ""
-                                )}
-                            </span>
-                        </div>
-
-                        <div>
-                            ${formatMoney(
-                                asset.price
-                            )}
-                        </div>
-
-                        <div
-                            class="${
-                                change >= 0
-                                    ? "positive"
-                                    : "negative"
-                            }"
-                        >
-                            ${change >= 0 ? "+" : ""}
-                            ${change.toFixed(2)}%
-                        </div>
-
-                        <div>
-                            ${formatCompactMoney(
-                                asset.market_cap
-                            )}
-                        </div>
-
-                        <div>
-                            ${formatCompactMoney(
-                                asset.volume
-                            )}
-                        </div>
-
-                    </div>
-                `;
-            })
-            .join("");
-}
-
-
-// ============================================================
-// MARKET FILTERING
-// ============================================================
-
-function getFilteredMarketAssets() {
     const searchInput =
         document.getElementById(
             "market-search"
         );
 
     const search =
-        searchInput?.value
-            .trim()
-            .toLowerCase() || "";
+        (
+            searchInput?.value ||
+            ""
+        )
+        .trim()
+        .toLowerCase();
 
-    return marketAssets.filter(
-        asset => {
-            const matchesCategory =
-                selectedMarketCategory ===
-                    "All" ||
-                asset.category ===
-                    selectedMarketCategory;
+    let assets =
+        [...marketAssets];
 
-            const matchesSearch =
-                !search ||
-                String(
-                    asset.name || ""
-                )
-                    .toLowerCase()
-                    .includes(search) ||
-                String(
-                    asset.symbol || ""
-                )
-                    .toLowerCase()
-                    .includes(search);
+    if (
+        currentMarketCategory !==
+        "all"
+    ) {
 
-            return (
-                matchesCategory &&
-                matchesSearch
+        assets =
+            assets.filter(
+                asset =>
+                    String(
+                        asset.category ||
+                        ""
+                    ).toLowerCase() ===
+                    currentMarketCategory
             );
-        }
+    }
+
+    if (search) {
+
+        assets =
+            assets.filter(asset => {
+
+                const name =
+                    String(
+                        asset.name || ""
+                    ).toLowerCase();
+
+                const symbol =
+                    String(
+                        asset.symbol || ""
+                    ).toLowerCase();
+
+                return (
+                    name.includes(search) ||
+                    symbol.includes(search)
+                );
+            });
+    }
+
+    renderMarketOverview(assets);
+    renderMovers(assets);
+    renderMarketList(assets);
+}
+
+
+function filterMarket(category) {
+
+    currentMarketCategory =
+        category;
+
+    renderMarket();
+}
+
+
+function renderMarketOverview(assets) {
+
+    setText(
+        "market-asset-count",
+        assets.length
+    );
+
+    const totalCap =
+        assets.reduce(
+            (sum, asset) =>
+                sum +
+                Number(
+                    asset.market_cap || 0
+                ),
+            0
+        );
+
+    const totalVolume =
+        assets.reduce(
+            (sum, asset) =>
+                sum +
+                Number(
+                    asset.volume || 0
+                ),
+            0
+        );
+
+    setText(
+        "market-total-cap",
+        formatMoney(totalCap)
+    );
+
+    setText(
+        "market-total-volume",
+        formatNumber(totalVolume)
     );
 }
 
 
-function filterMarket() {
-    renderMarket();
+function renderMovers(assets) {
+
+    const ranked =
+        assets
+            .map(asset => {
+
+                const price =
+                    Number(
+                        asset.price || 0
+                    );
+
+                const previous =
+                    Number(
+                        asset.previous_price ||
+                        price
+                    );
+
+                const change =
+                    previous === 0
+                        ? 0
+                        : (
+                            (
+                                price -
+                                previous
+                            ) /
+                            previous
+                        ) *
+                        100;
+
+                return {
+                    ...asset,
+                    change
+                };
+            })
+            .sort(
+                (a, b) =>
+                    b.change -
+                    a.change
+            );
+
+    const gainers =
+        ranked
+            .filter(
+                asset =>
+                    asset.change > 0
+            )
+            .slice(0, 5);
+
+    const losers =
+        ranked
+            .filter(
+                asset =>
+                    asset.change < 0
+            )
+            .sort(
+                (a, b) =>
+                    a.change -
+                    b.change
+            )
+            .slice(0, 5);
+
+    renderMoverList(
+        "gainers-list",
+        gainers
+    );
+
+    renderMoverList(
+        "losers-list",
+        losers
+    );
 }
 
 
-function setMarketCategory(
-    category,
-    button
+function renderMoverList(
+    elementId,
+    assets
 ) {
-    selectedMarketCategory =
-        category;
 
-    document
-        .querySelectorAll(
-            ".category"
-        )
-        .forEach(
-            categoryButton => {
-                categoryButton.classList.remove(
-                    "active"
-                );
-            }
+    const container =
+        document.getElementById(
+            elementId
         );
 
-    if (button) {
-        button.classList.add(
-            "active"
-        );
+    if (!container) {
+        return;
     }
 
-    renderMarket();
+    if (!assets.length) {
+
+        container.innerHTML =
+            "<p>No movers.</p>";
+
+        return;
+    }
+
+    container.innerHTML = "";
+
+    assets.forEach(asset => {
+
+        const row =
+            document.createElement("div");
+
+        row.className =
+            "mover-row";
+
+        row.innerHTML = `
+            <div>
+                <strong>
+                    ${escapeHTML(asset.symbol)}
+                </strong>
+
+                <span>
+                    ${escapeHTML(asset.name)}
+                </span>
+            </div>
+
+            <div>
+                ${formatMoney(asset.price)}
+            </div>
+
+            <div>
+                ${formatSignedPercent(
+                    asset.change
+                )}
+            </div>
+        `;
+
+        row.addEventListener(
+            "click",
+            () => loadAssetDetail(asset.id)
+        );
+
+        container.appendChild(row);
+    });
 }
+
+
+function renderMarketList(assets) {
+
+    const container =
+        document.getElementById(
+            "market-list"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    if (!assets.length) {
+
+        container.innerHTML =
+            "<p>No assets found.</p>";
+
+        return;
+    }
+
+    container.innerHTML = "";
+
+    assets.forEach(asset => {
+
+        const price =
+            Number(
+                asset.price || 0
+            );
+
+        const previous =
+            Number(
+                asset.previous_price ||
+                price
+            );
+
+        const change =
+            previous === 0
+                ? 0
+                : (
+                    (
+                        price -
+                        previous
+                    ) /
+                    previous
+                ) *
+                100;
+
+        const row =
+            document.createElement("div");
+
+        row.className =
+            "market-row";
+
+        row.innerHTML = `
+            <div>
+                <strong>
+                    ${escapeHTML(asset.name)}
+                </strong>
+
+                <span>
+                    ${escapeHTML(asset.symbol)}
+                </span>
+            </div>
+
+            <div>
+                ${formatMoney(price)}
+            </div>
+
+            <div>
+                ${formatSignedPercent(change)}
+            </div>
+
+            <div>
+                ${formatMoney(
+                    asset.market_cap || 0
+                )}
+            </div>
+
+            <div>
+                ${formatNumber(
+                    asset.volume || 0
+                )}
+            </div>
+        `;
+
+        row.addEventListener(
+            "click",
+            () => loadAssetDetail(asset.id)
+        );
+
+        container.appendChild(row);
+    });
+}
+
+
+// ------------------------------------------------------------
+// MARKET SEARCH
+// ------------------------------------------------------------
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        const marketSearch =
+            document.getElementById(
+                "market-search"
+            );
+
+        if (marketSearch) {
+
+            marketSearch.addEventListener(
+                "input",
+                renderMarket
+            );
+        }
+    }
+);
 
 
 // ============================================================
 // ASSET DETAIL
 // ============================================================
 
-async function openAsset(
-    assetId
-) {
-    const asset =
-        marketAssets.find(
-            item =>
-                String(item.id) ===
-                String(assetId)
-        );
+async function loadAssetDetail(assetId) {
+
+    const {
+        data: asset,
+        error
+    } = await supabaseClient
+        .from("Assets")
+        .select("*")
+        .eq("id", assetId)
+        .maybeSingle();
+
+    if (error) {
+
+        console.error(error);
+        return;
+    }
 
     if (!asset) {
-        console.warn(
-            "Asset not found:",
-            assetId
+
+        alert(
+            "Asset not found."
         );
 
         return;
     }
 
-    showPage(
-        "asset-detail"
+    currentAsset =
+        asset;
+
+    setText(
+        "asset-name",
+        asset.name
     );
 
-    const nameElement =
-        document.getElementById(
-            "asset-name"
+    setText(
+        "asset-symbol",
+        asset.symbol
+    );
+
+    setText(
+        "asset-category",
+        asset.category
+    );
+
+    setText(
+        "asset-category-stat",
+        asset.category
+    );
+
+    setText(
+        "asset-price",
+        formatMoney(asset.price)
+    );
+
+    setText(
+        "trade-price",
+        formatMoney(asset.price)
+    );
+
+    setText(
+        "asset-market-cap",
+        formatMoney(
+            asset.market_cap || 0
+        )
+    );
+
+    setText(
+        "asset-volume",
+        formatNumber(
+            asset.volume || 0
+        )
+    );
+
+    setText(
+        "asset-description",
+        asset.description ||
+        "No description available."
+    );
+
+    updateAssetChange(asset);
+
+    await loadTradePosition();
+
+    showPage("asset-detail");
+
+    setTimeout(
+        () => loadChart(),
+        50
+    );
+}
+
+
+// ------------------------------------------------------------
+// ASSET CHANGE
+// ------------------------------------------------------------
+
+function updateAssetChange(asset) {
+
+    const price =
+        Number(
+            asset.price || 0
         );
 
-    const symbolElement =
-        document.getElementById(
-            "asset-symbol"
+    const previous =
+        Number(
+            asset.previous_price ||
+            price
         );
-
-    const priceElement =
-        document.getElementById(
-            "asset-price"
-        );
-
-    const changeElement =
-        document.getElementById(
-            "asset-change"
-        );
-
-    const categoryElement =
-        document.getElementById(
-            "asset-category"
-        );
-
-    const statCategoryElement =
-        document.getElementById(
-            "asset-stat-category"
-        );
-
-    const capElement =
-        document.getElementById(
-            "asset-market-cap"
-        );
-
-    const volumeElement =
-        document.getElementById(
-            "asset-volume"
-        );
-
-    const descriptionElement =
-        document.getElementById(
-            "asset-description"
-        );
-
-    if (nameElement) {
-        nameElement.textContent =
-            asset.name ||
-            "—";
-    }
-
-    if (symbolElement) {
-        symbolElement.textContent =
-            asset.symbol ||
-            "—";
-    }
-
-    if (priceElement) {
-        priceElement.textContent =
-            formatMoney(
-                asset.price
-            );
-    }
 
     const change =
-        getChange(asset);
+        previous === 0
+            ? 0
+            : (
+                (
+                    price -
+                    previous
+                ) /
+                previous
+            ) *
+            100;
 
-    if (changeElement) {
-        changeElement.textContent =
-            `${
-                change >= 0
-                    ? "+"
-                    : ""
-            }${change.toFixed(2)}%`;
-
-        changeElement.className =
-            change >= 0
-                ? "positive"
-                : "negative";
-    }
-
-    if (categoryElement) {
-        categoryElement.textContent =
-            asset.category ||
-            "—";
-    }
-
-    if (statCategoryElement) {
-        statCategoryElement.textContent =
-            asset.category ||
-            "—";
-    }
-
-    if (capElement) {
-        capElement.textContent =
-            formatCompactMoney(
-                asset.market_cap
-            );
-    }
-
-    if (volumeElement) {
-        volumeElement.textContent =
-            formatCompactMoney(
-                asset.volume
-            );
-    }
-
-    if (descriptionElement) {
-        descriptionElement.textContent =
-            asset.description ||
-            "No description available.";
-    }
-
-    currentChartAssetId =
-        asset.id;
-
-    currentChartPeriod =
-        "1D";
-
-    updateChartPeriodButtons();
-
-    await loadPriceHistory(
-        asset.id
+    setText(
+        "asset-change",
+        formatSignedPercent(change)
     );
 }
 
 
 // ============================================================
-// PRICE HISTORY
+// TRADING
 // ============================================================
 
-async function loadPriceHistory(
-    assetId
+function setTradeSide(side) {
+
+    currentTradeSide =
+        side;
+
+    const buyTab =
+        document.getElementById(
+            "buy-tab"
+        );
+
+    const sellTab =
+        document.getElementById(
+            "sell-tab"
+        );
+
+    const submit =
+        document.getElementById(
+            "trade-submit"
+        );
+
+    if (side === "buy") {
+
+        buyTab?.classList.add(
+            "active"
+        );
+
+        sellTab?.classList.remove(
+            "active"
+        );
+
+        if (submit) {
+            submit.textContent =
+                "Buy";
+        }
+
+    } else {
+
+        sellTab?.classList.add(
+            "active"
+        );
+
+        buyTab?.classList.remove(
+            "active"
+        );
+
+        if (submit) {
+            submit.textContent =
+                "Sell";
+        }
+    }
+
+    clearTradeMessage();
+
+    updateTradePreview();
+}
+
+
+async function loadTradePosition() {
+
+    if (
+        !currentUser ||
+        !currentAsset
+    ) {
+        return;
+    }
+
+    const {
+        data: position,
+        error
+    } = await supabaseClient
+        .from("Portfolios")
+        .select("*")
+        .eq("user_id", currentUser.id)
+        .eq("asset_id", currentAsset.id)
+        .maybeSingle();
+
+    if (error) {
+
+        console.error(
+            "Position error:",
+            error
+        );
+
+        return;
+    }
+
+    const shares =
+        Number(
+            position?.shares || 0
+        );
+
+    const average =
+        Number(
+            position?.average_price || 0
+        );
+
+    const price =
+        Number(
+            currentAsset.price || 0
+        );
+
+    const value =
+        shares * price;
+
+    const pnl =
+        shares *
+        (price - average);
+
+    setText(
+        "trade-holdings",
+        formatNumber(shares)
+    );
+
+    setText(
+        "position-shares",
+        formatNumber(shares)
+    );
+
+    setText(
+        "position-average",
+        formatMoney(average)
+    );
+
+    setText(
+        "position-value",
+        formatMoney(value)
+    );
+
+    setText(
+        "position-pnl",
+        formatSignedMoney(pnl)
+    );
+
+    await refreshTradeBalance();
+
+    updateTradePreview();
+}
+
+
+async function refreshTradeBalance() {
+
+    if (!currentUser) {
+        return;
+    }
+
+    const {
+        data: profile,
+        error
+    } = await supabaseClient
+        .from("Profiles")
+        .select("balance")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+    if (error) {
+
+        console.error(error);
+        return;
+    }
+
+    if (currentProfile) {
+        currentProfile.balance =
+            profile?.balance || 0;
+    }
+
+    setText(
+        "trade-balance",
+        formatMoney(
+            profile?.balance || 0
+        )
+    );
+}
+
+
+function updateTradePreview() {
+
+    if (!currentAsset) {
+        return;
+    }
+
+    const sharesInput =
+        document.getElementById(
+            "trade-shares"
+        );
+
+    const shares =
+        Math.max(
+            0,
+            Number(
+                sharesInput?.value || 0
+            )
+        );
+
+    const price =
+        Number(
+            currentAsset.price || 0
+        );
+
+    const total =
+        shares * price;
+
+    setText(
+        "trade-total",
+        formatMoney(total)
+    );
+
+    setText(
+        "trade-price",
+        formatMoney(price)
+    );
+}
+
+
+// ------------------------------------------------------------
+// SUBMIT TRADE
+// ------------------------------------------------------------
+
+async function submitTrade() {
+
+    if (!currentUser) {
+
+        showTradeMessage(
+            "You must be logged in.",
+            true
+        );
+
+        return;
+    }
+
+    if (!currentAsset) {
+
+        showTradeMessage(
+            "No asset selected.",
+            true
+        );
+
+        return;
+    }
+
+    const input =
+        document.getElementById(
+            "trade-shares"
+        );
+
+    const shares =
+        Number(
+            input?.value || 0
+        );
+
+    if (
+        !Number.isInteger(shares) ||
+        shares <= 0
+    ) {
+
+        showTradeMessage(
+            "Enter a whole number of shares.",
+            true
+        );
+
+        return;
+    }
+
+    const price =
+        Number(
+            currentAsset.price || 0
+        );
+
+    const total =
+        shares * price;
+
+    const action =
+        currentTradeSide === "buy"
+            ? "buy"
+            : "sell";
+
+    const confirmation =
+        `Confirm ${action.toUpperCase()}?\n\n` +
+        `${currentAsset.name} (${currentAsset.symbol})\n` +
+        `${shares} shares\n` +
+        `Price: ${formatMoney(price)}\n` +
+        `Total: ${formatMoney(total)}`;
+
+    if (!confirm(confirmation)) {
+        return;
+    }
+
+    const submit =
+        document.getElementById(
+            "trade-submit"
+        );
+
+    if (submit) {
+
+        submit.disabled = true;
+
+        submit.textContent =
+            "Processing...";
+    }
+
+    clearTradeMessage();
+
+    try {
+
+        const {
+            data,
+            error
+        } = await supabaseClient.rpc(
+            "execute_trade",
+            {
+                p_asset_id:
+                    currentAsset.id,
+
+                p_side:
+                    currentTradeSide,
+
+                p_shares:
+                    shares
+            }
+        );
+
+        if (error) {
+            throw error;
+        }
+
+        console.log(
+            "Trade result:",
+            data
+        );
+
+        showTradeMessage(
+            `${action === "buy" ? "Bought" : "Sold"} ${shares} share${shares === 1 ? "" : "s"} successfully.`,
+            false
+        );
+
+        if (input) {
+            input.value = 1;
+        }
+
+        await refreshCurrentAsset();
+
+        await loadTradePosition();
+
+        await loadDashboardDataOnly();
+
+    } catch (error) {
+
+        console.error(
+            "Trade error:",
+            error
+        );
+
+        let message =
+            error.message ||
+            "Trade failed.";
+
+        const lowerMessage =
+            message.toLowerCase();
+
+        if (
+            lowerMessage.includes(
+                "insufficient balance"
+            )
+        ) {
+
+            message =
+                "Not enough cash for this trade.";
+
+        } else if (
+            lowerMessage.includes(
+                "insufficient shares"
+            )
+        ) {
+
+            message =
+                "You do not own enough shares to sell.";
+
+        } else if (
+            lowerMessage.includes(
+                "invalid side"
+            )
+        ) {
+
+            message =
+                "Invalid trade type.";
+        }
+
+        showTradeMessage(
+            message,
+            true
+        );
+
+    } finally {
+
+        if (submit) {
+
+            submit.disabled = false;
+
+            submit.textContent =
+                currentTradeSide === "buy"
+                    ? "Buy"
+                    : "Sell";
+        }
+    }
+}
+
+
+// ------------------------------------------------------------
+// REFRESH CURRENT ASSET
+// ------------------------------------------------------------
+
+async function refreshCurrentAsset() {
+
+    if (!currentAsset) {
+        return;
+    }
+
+    const {
+        data: asset,
+        error
+    } = await supabaseClient
+        .from("Assets")
+        .select("*")
+        .eq("id", currentAsset.id)
+        .maybeSingle();
+
+    if (error) {
+
+        console.error(error);
+        return;
+    }
+
+    if (!asset) {
+        return;
+    }
+
+    currentAsset =
+        asset;
+
+    setText(
+        "asset-price",
+        formatMoney(asset.price)
+    );
+
+    setText(
+        "trade-price",
+        formatMoney(asset.price)
+    );
+
+    setText(
+        "asset-market-cap",
+        formatMoney(
+            asset.market_cap || 0
+        )
+    );
+
+    setText(
+        "asset-volume",
+        formatNumber(
+            asset.volume || 0
+        )
+    );
+
+    updateAssetChange(asset);
+
+    updateTradePreview();
+
+    if (
+        !document
+            .getElementById("asset-detail")
+            ?.classList.contains("hidden")
+    ) {
+
+        await loadChart();
+    }
+}
+
+
+// ------------------------------------------------------------
+// DASHBOARD DATA ONLY
+// ------------------------------------------------------------
+
+async function loadDashboardDataOnly() {
+
+    if (!currentUser) {
+        return;
+    }
+
+    const {
+        data: profile
+    } = await supabaseClient
+        .from("Profiles")
+        .select("*")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+    if (!profile) {
+        return;
+    }
+
+    currentProfile =
+        profile;
+
+    setText(
+        "balance",
+        formatMoney(
+            profile.balance || 0
+        )
+    );
+
+    const portfolioValue =
+        await calculatePortfolioValue();
+
+    setText(
+        "portfolio",
+        formatMoney(
+            portfolioValue.value
+        )
+    );
+
+    setText(
+        "pnl",
+        formatSignedMoney(
+            portfolioValue.pnl
+        )
+    );
+}
+
+
+// ------------------------------------------------------------
+// TRADE MESSAGES
+// ------------------------------------------------------------
+
+function showTradeMessage(
+    message,
+    isError
 ) {
+
+    const element =
+        document.getElementById(
+            "trade-message"
+        );
+
+    if (!element) {
+        return;
+    }
+
+    element.textContent =
+        message;
+
+    element.classList.toggle(
+        "negative",
+        Boolean(isError)
+    );
+
+    element.classList.toggle(
+        "positive",
+        !isError
+    );
+}
+
+
+function clearTradeMessage() {
+
+    const element =
+        document.getElementById(
+            "trade-message"
+        );
+
+    if (element) {
+
+        element.textContent = "";
+
+        element.classList.remove(
+            "negative",
+            "positive"
+        );
+    }
+}
+
+
+// ============================================================
+// CHART
+// ============================================================
+
+async function loadChart() {
+
     const container =
         document.getElementById(
             "price-chart"
         );
 
-    if (!container) {
+    if (
+        !container ||
+        !currentAsset
+    ) {
         return;
     }
+
+    if (chart) {
+
+        try {
+            chart.remove();
+        } catch (error) {
+            console.warn(
+                "Could not remove previous chart:",
+                error
+            );
+        }
+
+        chart = null;
+        candleSeries = null;
+    }
+
+    container.innerHTML = "";
 
     if (
         typeof LightweightCharts ===
         "undefined"
     ) {
-        container.innerHTML =
-            `<div class="chart-placeholder">
-                Chart library failed to load.
-            </div>`;
-
-        console.error(
-            "LightweightCharts was not loaded."
-        );
-
-        return;
-    }
-
-    container.innerHTML =
-        `<div class="chart-loading">
-            Loading chart...
-        </div>`;
-
-    const {
-        data,
-        error
-    } =
-        await supabaseClient
-            .from("PriceHistory")
-            .select("*")
-            .eq(
-                "asset_id",
-                assetId
-            )
-            .order(
-                "recorded_at",
-                {
-                    ascending: true
-                }
-            );
-
-    if (error) {
-        console.error(
-            "Price history error:",
-            error
-        );
 
         container.innerHTML =
-            `<div class="chart-placeholder">
-                Unable to load price history.
-            </div>`;
+            "<p>Chart library unavailable.</p>";
 
         return;
     }
 
-    const history =
-        data || [];
-
-    if (!history.length) {
-        container.innerHTML =
-            `<div class="chart-placeholder">
-                No price history yet.
-            </div>`;
-
-        return;
-    }
-
-    renderInteractiveChart(
-        history
-    );
-}
-
-
-// ============================================================
-// INTERACTIVE CANDLESTICK CHART
-// ============================================================
-
-function renderInteractiveChart(
-    history
-) {
-    const container =
-        document.getElementById(
-            "price-chart"
-        );
-
-    if (!container) {
-        return;
-    }
-
-    if (currentChart) {
-        currentChart.remove();
-        currentChart = null;
-        currentChartSeries = null;
-    }
-
-    if (chartResizeObserver) {
-        chartResizeObserver.disconnect();
-        chartResizeObserver = null;
-    }
-
-    container.innerHTML = "";
-
-    const candles =
-        buildCandlestickData(
-            history
-        );
-
-    if (!candles.length) {
-        container.innerHTML =
-            `<div class="chart-placeholder">
-                Not enough data for a chart.
-            </div>`;
-
-        return;
-    }
-
-    currentChart =
+    chart =
         LightweightCharts.createChart(
             container,
             {
-                autoSize: true,
+                width:
+                    container.clientWidth ||
+                    700,
+
+                height: 420,
 
                 layout: {
                     background: {
-                        type: "solid",
-                        color: "#080808"
+                        color: "transparent"
                     },
-                    textColor: "#888888"
+
+                    textColor:
+                        "#9ca3af"
                 },
 
                 grid: {
                     vertLines: {
-                        color: "#202020"
+                        color:
+                            "rgba(128,128,128,0.15)"
                     },
+
                     horzLines: {
-                        color: "#202020"
+                        color:
+                            "rgba(128,128,128,0.15)"
                     }
                 },
 
                 rightPriceScale: {
-                    borderColor: "#252525",
-
-                    scaleMargins: {
-                        top: 0.08,
-                        bottom: 0.08
-                    }
+                    borderColor:
+                        "rgba(128,128,128,0.25)"
                 },
 
                 timeScale: {
-                    borderColor: "#252525",
-                    timeVisible: true,
-                    secondsVisible: false,
-                    rightOffset: 5,
-                    barSpacing: 8,
-                    minBarSpacing: 2
-                },
-
-                crosshair: {
-                    mode:
-                        LightweightCharts
-                            .CrosshairMode
-                            .Normal
-                },
-
-                handleScroll: {
-                    mouseWheel: true,
-                    pressedMouseMove: true,
-                    horzTouchDrag: true,
-                    vertTouchDrag: true
-                },
-
-                handleScale: {
-                    mouseWheel: true,
-                    pinch: true,
-                    axisPressedMouseMove: true,
-                    axisDoubleClickReset: true
+                    borderColor:
+                        "rgba(128,128,128,0.25)"
                 }
             }
         );
 
-    currentChartSeries =
-        currentChart.addSeries(
+    candleSeries =
+        chart.addSeries(
             LightweightCharts.CandlestickSeries,
             {
-                upColor: "#16c784",
-                downColor: "#ea3943",
-
-                borderUpColor:
-                    "#16c784",
-
-                borderDownColor:
-                    "#ea3943",
-
-                wickUpColor:
-                    "#16c784",
-
-                wickDownColor:
-                    "#ea3943",
-
-                borderVisible: true
+                upColor: "#16a34a",
+                downColor: "#dc2626",
+                borderUpColor: "#16a34a",
+                borderDownColor: "#dc2626",
+                wickUpColor: "#16a34a",
+                wickDownColor: "#dc2626"
             }
         );
 
-    currentChartSeries.setData(
-        candles
-    );
+    await loadChartData();
 
-    currentChart
-        .timeScale()
-        .fitContent();
+    if (typeof ResizeObserver !== "undefined") {
 
-    if (
-        typeof ResizeObserver !==
-        "undefined"
-    ) {
-        chartResizeObserver =
+        const resizeObserver =
             new ResizeObserver(
                 entries => {
-                    if (
-                        !currentChart ||
-                        !entries.length
+
+                    for (
+                        const entry of entries
                     ) {
-                        return;
+
+                        if (!chart) {
+                            return;
+                        }
+
+                        chart.resize(
+                            entry.contentRect.width,
+                            420
+                        );
                     }
-
-                    const rect =
-                        entries[0]
-                            .contentRect;
-
-                    currentChart.resize(
-                        rect.width,
-                        Math.max(
-                            rect.height,
-                            320
-                        )
-                    );
                 }
             );
 
-        chartResizeObserver.observe(
+        resizeObserver.observe(
             container
         );
     }
-
-    container.addEventListener(
-        "dblclick",
-        () => {
-            if (currentChart) {
-                currentChart
-                    .timeScale()
-                    .fitContent();
-            }
-        }
-    );
 }
 
 
-// ============================================================
-// BUILD CANDLE DATA
-// ============================================================
+async function loadChartData() {
 
-function buildCandlestickData(
-    history
-) {
-    const sorted =
-        [...history]
-            .filter(
-                point =>
-                    point.recorded_at
-            )
-            .sort(
-                (a, b) =>
-                    new Date(
-                        a.recorded_at
-                    ) -
-                    new Date(
-                        b.recorded_at
-                    )
-            );
+    if (
+        !currentAsset ||
+        !candleSeries
+    ) {
+        return;
+    }
+
+    const periodStart =
+        getChartStartDate(
+            currentChartPeriod
+        );
+
+    const {
+        data: history,
+        error
+    } = await supabaseClient
+        .from("PriceHistory")
+        .select("*")
+        .eq(
+            "asset_id",
+            currentAsset.id
+        )
+        .gte(
+            "recorded_at",
+            periodStart.toISOString()
+        )
+        .order(
+            "recorded_at",
+            {
+                ascending: true
+            }
+        );
+
+    if (error) {
+
+        console.error(
+            "Chart history error:",
+            error
+        );
+
+        return;
+    }
+
+    if (
+        !history ||
+        history.length === 0
+    ) {
+
+        candleSeries.setData([]);
+
+        return;
+    }
+
+    const candles =
+        buildCandles(
+            history
+        );
+
+    candleSeries.setData(
+        candles
+    );
+
+    if (chart) {
+        chart.timeScale().fitContent();
+    }
+}
+
+
+// ------------------------------------------------------------
+// BUILD CANDLES
+// ------------------------------------------------------------
+
+function buildCandles(history) {
 
     const candles = [];
 
-    let previousClose = null;
+    history.forEach(row => {
 
-    for (
-        const point of sorted
-    ) {
-        const timestamp =
+        const time =
             Math.floor(
                 new Date(
-                    point.recorded_at
+                    row.recorded_at
                 ).getTime() /
-                    1000
+                1000
             );
-
-        if (
-            !Number.isFinite(
-                timestamp
-            )
-        ) {
-            continue;
-        }
 
         const close =
             Number(
-                point.close_price ??
-                point.price
+                row.close_price ??
+                row.price ??
+                0
             );
 
-        if (
-            !Number.isFinite(
+        const open =
+            Number(
+                row.open_price ??
                 close
-            )
-        ) {
-            continue;
-        }
-
-        let open =
-            Number(
-                point.open_price
             );
 
-        let high =
+        const high =
             Number(
-                point.high_price
-            );
-
-        let low =
-            Number(
-                point.low_price
-            );
-
-        if (
-            !Number.isFinite(
-                open
-            )
-        ) {
-            open =
-                previousClose !==
-                null
-                    ? previousClose
-                    : close;
-        }
-
-        if (
-            !Number.isFinite(
-                high
-            )
-        ) {
-            high =
+                row.high_price ??
                 Math.max(
                     open,
                     close
-                );
-        }
+                )
+            );
 
-        if (
-            !Number.isFinite(
-                low
-            )
-        ) {
-            low =
+        const low =
+            Number(
+                row.low_price ??
                 Math.min(
                     open,
                     close
-                );
-        }
-
-        high =
-            Math.max(
-                high,
-                open,
-                close
+                )
             );
-
-        low =
-            Math.min(
-                low,
-                open,
-                close
-            );
-
-        const candle = {
-            time: timestamp,
-            open,
-            high,
-            low,
-            close
-        };
-
-        const last =
-            candles[
-                candles.length - 1
-            ];
 
         if (
-            last &&
-            last.time ===
-                timestamp
+            Number.isFinite(time) &&
+            close > 0
         ) {
-            candles[
-                candles.length - 1
-            ] = candle;
-        } else {
-            candles.push(
-                candle
-            );
+
+            candles.push({
+                time,
+                open,
+                high,
+                low,
+                close
+            });
         }
+    });
 
-        previousClose =
-            close;
-    }
-
-    return filterCandlesByPeriod(
-        candles
-    );
+    return candles;
 }
 
 
-// ============================================================
-// CHART PERIODS
-// ============================================================
+// ------------------------------------------------------------
+// CHART PERIOD
+// ------------------------------------------------------------
 
-function setChartPeriod(
-    period,
-    button
-) {
+function setChartPeriod(period) {
+
     currentChartPeriod =
         period;
 
     document
         .querySelectorAll(
-            ".period"
+            ".chart-periods button"
         )
-        .forEach(
-            periodButton => {
-                periodButton.classList.remove(
+        .forEach(button => {
+
+            button.classList.remove(
+                "active"
+            );
+
+            if (
+                button.textContent
+                    .trim() === period
+            ) {
+
+                button.classList.add(
                     "active"
                 );
             }
-        );
+        });
 
-    if (button) {
-        button.classList.add(
-            "active"
-        );
-    }
-
-    if (
-        !currentChartAssetId
-    ) {
-        return;
-    }
-
-    loadPriceHistory(
-        currentChartAssetId
-    );
+    loadChartData();
 }
 
 
-function updateChartPeriodButtons() {
-    document
-        .querySelectorAll(
-            ".period"
-        )
-        .forEach(
-            button => {
-                button.classList.toggle(
-                    "active",
-                    button.textContent
-                        .trim() ===
-                        currentChartPeriod
-                );
-            }
-        );
-}
+function getChartStartDate(period) {
 
+    const now =
+        new Date();
 
-function filterCandlesByPeriod(
-    candles
-) {
-    if (!candles.length) {
-        return [];
-    }
+    const start =
+        new Date(now);
 
-    if (
-        currentChartPeriod ===
-        "ALL"
-    ) {
-        return candles;
-    }
+    switch (period) {
 
-    const daysMap = {
-        "1D": 1,
-        "1W": 7,
-        "1M": 30,
-        "3M": 90,
-        "1Y": 365
-    };
+        case "1D":
 
-    const days =
-        daysMap[
-            currentChartPeriod
-        ];
+            start.setDate(
+                now.getDate() - 1
+            );
 
-    if (!days) {
-        return candles;
-    }
+            break;
 
-    const newest =
-        candles[
-            candles.length - 1
-        ].time;
+        case "1W":
 
-    const cutoff =
-        newest -
-        days *
-            24 *
-            60 *
-            60;
+            start.setDate(
+                now.getDate() - 7
+            );
 
-    const filtered =
-        candles.filter(
-            candle =>
-                candle.time >=
-                cutoff
-        );
+            break;
 
-    if (
-        filtered.length < 2 &&
-        candles.length >= 2
-    ) {
-        return candles;
-    }
+        case "1M":
 
-    return filtered;
-}
+            start.setMonth(
+                now.getMonth() - 1
+            );
 
+            break;
 
-// ============================================================
-// ADMIN PANEL
-// ============================================================
+        case "3M":
 
-async function loadAdminPanel() {
-    if (
-        !currentUser ||
-        !isMKMOwner(currentUser)
-    ) {
-        showPage("dashboard");
-        return;
-    }
+            start.setMonth(
+                now.getMonth() - 3
+            );
 
-    showPage("admin");
+            break;
 
-    await loadAdminData();
-}
+        case "1Y":
 
+            start.setFullYear(
+                now.getFullYear() - 1
+            );
 
-async function loadAdminData() {
-    if (
-        !currentUser ||
-        !isMKMOwner(currentUser)
-    ) {
-        return;
-    }
+            break;
 
-    await loadAdminCompanies();
+        default:
 
-    const countElement =
-        document.getElementById(
-            "admin-asset-count"
-        );
-
-    const capElement =
-        document.getElementById(
-            "admin-market-cap"
-        );
-
-    const {
-        data,
-        error
-    } =
-        await supabaseClient
-            .from("Assets")
-            .select("*");
-
-    if (error) {
-        console.error(
-            "Admin market error:",
-            error
-        );
-
-        return;
-    }
-
-    const assets =
-        data || [];
-
-    if (countElement) {
-        countElement.textContent =
-            assets.length;
-    }
-
-    const totalCap =
-        assets.reduce(
-            (sum, asset) =>
-                sum +
-                (
-                    Number(
-                        asset.market_cap
-                    ) || 0
-                ),
-            0
-        );
-
-    if (capElement) {
-        capElement.textContent =
-            formatCompactMoney(
-                totalCap
+            start.setFullYear(
+                now.getFullYear() - 10
             );
     }
 
-    await loadMarketSettings();
+    return start;
 }
 
 
 // ============================================================
-// ADMIN COMPANY LIST
+// ADMIN
 // ============================================================
 
-async function loadAdminCompanies() {
+async function loadAdminPanel() {
+
+    if (
+        !currentUser ||
+        currentUser.id !==
+        MKM_OWNER_ID
+    ) {
+
+        alert(
+            "Admin access denied."
+        );
+
+        return;
+    }
+
+    await loadAdminAssets();
+
+    await loadMarketSettings();
+
+    showPage("admin");
+}
+
+
+async function loadAdminAssets() {
+
+    const {
+        data: assets,
+        error
+    } = await supabaseClient
+        .from("Assets")
+        .select("*")
+        .order("name");
+
+    if (error) {
+
+        console.error(error);
+        return;
+    }
+
     const list =
         document.getElementById(
             "admin-company-list"
         );
 
-    if (!list) {
-        return;
-    }
-
-    const {
-        data,
-        error
-    } =
-        await supabaseClient
-            .from("Assets")
-            .select("*")
-            .order(
-                "name",
-                {
-                    ascending: true
-                }
-            );
-
-    if (error) {
-        console.error(
-            "Admin Assets error:",
-            error
+    const eventAsset =
+        document.getElementById(
+            "event-asset"
         );
 
-        list.innerHTML =
-            `<div class="empty-state">
-                Unable to load companies.
-            </div>`;
-
-        return;
+    if (list) {
+        list.innerHTML = "";
     }
 
-    if (!data?.length) {
-        list.innerHTML =
-            `<div class="empty-state">
-                No companies yet.
-            </div>`;
-
-        return;
+    if (eventAsset) {
+        eventAsset.innerHTML = "";
     }
 
-    list.innerHTML =
-        data
-            .map(
-                asset => `
-                    <div class="admin-company-row">
+    let totalMarketCap = 0;
 
-                        <div>
-                            <strong>
-                                ${escapeHTML(
-                                    asset.name ||
-                                    ""
-                                )}
-                            </strong>
+    (assets || []).forEach(asset => {
 
-                            <span>
-                                ${escapeHTML(
-                                    asset.symbol ||
-                                    ""
-                                )}
-                            </span>
-                        </div>
+        totalMarketCap +=
+            Number(
+                asset.market_cap || 0
+            );
 
-                        <div>
-                            ${formatMoney(
-                                asset.price
-                            )}
-                        </div>
+        if (list) {
 
-                        <div>
-                            ${escapeHTML(
-                                asset.category ||
-                                ""
-                            )}
-                        </div>
+            const row =
+                document.createElement(
+                    "div"
+                );
 
-                    </div>
-                `
-            )
-            .join("");
+            row.className =
+                "admin-company-row";
+
+            row.innerHTML = `
+                <div>
+                    <strong>
+                        ${escapeHTML(asset.name)}
+                    </strong>
+
+                    <span>
+                        ${escapeHTML(asset.symbol)}
+                    </span>
+                </div>
+
+                <div>
+                    ${formatMoney(asset.price)}
+                </div>
+
+                <div>
+                    ${formatMoney(
+                        asset.market_cap || 0
+                    )}
+                </div>
+            `;
+
+            list.appendChild(row);
+        }
+
+        if (eventAsset) {
+
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+            option.value =
+                asset.id;
+
+            option.textContent =
+                `${asset.symbol} — ${asset.name}`;
+
+            eventAsset.appendChild(
+                option
+            );
+        }
+    });
+
+    setText(
+        "admin-asset-count",
+        assets?.length || 0
+    );
+
+    setText(
+        "admin-market-cap",
+        formatMoney(
+            totalMarketCap
+        )
+    );
 }
 
 
-// ============================================================
+// ------------------------------------------------------------
 // ADD COMPANY
+// ------------------------------------------------------------
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        const companyForm =
+            document.getElementById(
+                "company-form"
+            );
+
+        if (!companyForm) {
+            return;
+        }
+
+        companyForm.addEventListener(
+            "submit",
+            async event => {
+
+                event.preventDefault();
+
+                if (
+                    !currentUser ||
+                    currentUser.id !==
+                    MKM_OWNER_ID
+                ) {
+
+                    return;
+                }
+
+                const name =
+                    document.getElementById(
+                        "company-name"
+                    ).value.trim();
+
+                const symbol =
+                    document.getElementById(
+                        "company-symbol"
+                    ).value.trim()
+                    .toUpperCase();
+
+                const category =
+                    document.getElementById(
+                        "company-category"
+                    ).value;
+
+                const price =
+                    Number(
+                        document.getElementById(
+                            "company-price"
+                        ).value
+                    );
+
+                const shares =
+                    Number(
+                        document.getElementById(
+                            "company-shares"
+                        ).value
+                    );
+
+                const message =
+                    document.getElementById(
+                        "company-message"
+                    );
+
+                if (
+                    !name ||
+                    !symbol ||
+                    !Number.isFinite(price) ||
+                    price <= 0 ||
+                    !Number.isInteger(shares) ||
+                    shares <= 0
+                ) {
+
+                    if (message) {
+                        message.textContent =
+                            "Please enter valid company information.";
+                    }
+
+                    return;
+                }
+
+                if (message) {
+                    message.textContent =
+                        "Adding company...";
+                }
+
+                try {
+
+                    const {
+                        data,
+                        error
+                    } = await supabaseClient
+                        .from("Assets")
+                        .insert({
+                            name,
+                            symbol,
+                            category,
+                            price,
+                            previous_price: price,
+                            market_cap:
+                                price * shares,
+                            volume: 0,
+                            description:
+                                ""
+                        })
+                        .select()
+                        .single();
+
+                    if (error) {
+                        throw error;
+                    }
+
+                    await recordPriceHistory(
+                        data.id,
+                        price
+                    );
+
+                    if (message) {
+                        message.textContent =
+                            "Company added successfully.";
+                    }
+
+                    companyForm.reset();
+
+                    await loadAdminAssets();
+
+                } catch (error) {
+
+                    console.error(error);
+
+                    if (message) {
+                        message.textContent =
+                            error.message ||
+                            "Could not add company.";
+                    }
+                }
+            }
+        );
+    }
+);
+
+
+// ============================================================
+// MARKET SETTINGS
 // ============================================================
 
-async function addCompany() {
-    if (
-        !currentUser ||
-        !isMKMOwner(currentUser)
-    ) {
-        alert(
-            "You are not authorized to do this."
-        );
+async function loadMarketSettings() {
 
+    const {
+        data: settings,
+        error
+    } = await supabaseClient
+        .from("MarketSettings")
+        .select("*")
+        .eq("id", 1)
+        .maybeSingle();
+
+    if (error) {
+
+        console.error(error);
         return;
     }
 
-    const name =
-        document
-            .getElementById(
-                "company-name"
-            )
-            ?.value.trim();
+    if (!settings) {
+        return;
+    }
 
-    const symbol =
-        document
-            .getElementById(
-                "company-symbol"
-            )
-            ?.value
-            .trim()
-            .toUpperCase();
-
-    const category =
+    const enabled =
         document.getElementById(
-            "company-category"
-        )?.value;
+            "automatic-market-enabled"
+        );
 
-    const price =
+    const interval =
+        document.getElementById(
+            "market-interval"
+        );
+
+    const movement =
+        document.getElementById(
+            "market-max-movement"
+        );
+
+    if (enabled) {
+        enabled.checked =
+            settings.automatic_enabled;
+    }
+
+    if (interval) {
+        interval.value =
+            settings.movement_interval_minutes;
+    }
+
+    if (movement) {
+        movement.value =
+            settings.max_normal_movement_percent;
+    }
+}
+
+
+async function saveMarketSettings() {
+
+    if (
+        !currentUser ||
+        currentUser.id !==
+        MKM_OWNER_ID
+    ) {
+        return;
+    }
+
+    const enabled =
+        document.getElementById(
+            "automatic-market-enabled"
+        )?.checked;
+
+    const interval =
         Number(
             document.getElementById(
-                "company-price"
+                "market-interval"
             )?.value
         );
 
-    const shares =
+    const movement =
         Number(
             document.getElementById(
-                "company-shares"
+                "market-max-movement"
             )?.value
         );
 
     const message =
         document.getElementById(
-            "company-message"
+            "market-settings-message"
         );
 
-    if (message) {
-        message.textContent = "";
-    }
-
     if (
-        !name ||
-        !symbol ||
-        !category ||
-        !Number.isFinite(price) ||
-        !Number.isFinite(shares)
+        !Number.isInteger(interval) ||
+        interval <= 0 ||
+        !Number.isFinite(movement) ||
+        movement <= 0
     ) {
+
         if (message) {
             message.textContent =
-                "Please fill in all required fields.";
+                "Enter valid market settings.";
         }
 
         return;
     }
 
-    const marketCap =
-        price * shares;
-
     const {
         error
-    } =
-        await supabaseClient
-            .from("Assets")
-            .insert({
-                name,
-                symbol,
-                category,
-                price,
-                previous_price:
-                    price,
-                market_cap:
-                    marketCap,
-                volume: 0,
-                description: ""
-            });
+    } = await supabaseClient
+        .from("MarketSettings")
+        .upsert({
+            id: 1,
+            automatic_enabled:
+                Boolean(enabled),
+            movement_interval_minutes:
+                interval,
+            max_normal_movement_percent:
+                movement,
+            updated_at:
+                new Date().toISOString()
+        });
 
     if (error) {
-        console.error(
-            "Add company error:",
-            error
-        );
+
+        console.error(error);
 
         if (message) {
             message.textContent =
@@ -2050,243 +2708,8 @@ async function addCompany() {
 
     if (message) {
         message.textContent =
-            `${name} was added to the MKM market.`;
+            "Market settings saved.";
     }
-
-    const companyForm =
-        document.getElementById(
-            "company-form"
-        );
-
-    if (companyForm) {
-        companyForm.reset();
-    }
-
-    await loadAdminData();
-}
-
-
-// ============================================================
-// MARKET ENGINE
-// ============================================================
-
-async function startMarketEngine() {
-    stopMarketEngine();
-
-    await runMarketSimulation();
-
-    marketEngineTimer =
-        setInterval(
-            runMarketSimulation,
-            5 * 60 * 1000
-        );
-
-    console.log(
-        "Simulated market engine started."
-    );
-}
-
-
-function stopMarketEngine() {
-    if (marketEngineTimer) {
-        clearInterval(
-            marketEngineTimer
-        );
-
-        marketEngineTimer = null;
-    }
-}
-
-
-async function runMarketSimulation() {
-    if (!currentUser) {
-        return;
-    }
-
-    const {
-        data: settings,
-        error: settingsError
-    } =
-        await supabaseClient
-            .from("MarketSettings")
-            .select("*")
-            .eq("id", 1)
-            .maybeSingle();
-
-    if (settingsError) {
-        console.error(
-            "Market settings error:",
-            settingsError
-        );
-
-        return;
-    }
-
-    if (
-        !settings ||
-        settings.automatic_enabled === false
-    ) {
-        return;
-    }
-
-    const {
-        data: assets,
-        error: assetError
-    } =
-        await supabaseClient
-            .from("Assets")
-            .select("*");
-
-    if (assetError) {
-        console.error(
-            "Market engine asset error:",
-            assetError
-        );
-
-        return;
-    }
-
-    for (const asset of assets || []) {
-        await simulateAssetMovement(
-            asset,
-            settings
-        );
-    }
-
-    if (
-        document
-            .getElementById("market")
-            ?.classList.contains("active")
-    ) {
-        await loadMarketData();
-    }
-}
-
-
-async function simulateAssetMovement(
-    asset,
-    settings
-) {
-    const oldPrice =
-        Number(asset.price);
-
-    if (
-        !Number.isFinite(oldPrice) ||
-        oldPrice <= 0
-    ) {
-        return;
-    }
-
-    const maxMovement =
-        Number(
-            settings.max_normal_movement_percent
-        ) || 1;
-
-    const randomPercent =
-        (
-            Math.random() *
-            2 -
-            1
-        ) *
-        maxMovement;
-
-    const eventBias =
-        await getActiveEventBias(
-            asset.id
-        );
-
-    const finalPercent =
-        randomPercent +
-        eventBias;
-
-    const multiplier =
-        1 +
-        finalPercent / 100;
-
-    const newPrice =
-        Math.max(
-            0.01,
-            Number(
-                (
-                    oldPrice *
-                    multiplier
-                ).toFixed(2)
-            )
-        );
-
-    if (
-        newPrice === oldPrice
-    ) {
-        return;
-    }
-
-    const marketCap =
-        Number(asset.market_cap) > 0
-            ? Number(
-                (
-                    Number(asset.market_cap) *
-                    (
-                        newPrice /
-                        oldPrice
-                    )
-                ).toFixed(2)
-            )
-            : null;
-
-    const volume =
-        Math.max(
-            0,
-            Number(asset.volume) || 0
-        ) +
-        Math.round(
-            Math.abs(
-                newPrice -
-                oldPrice
-            ) * 100
-        );
-
-    const {
-        error
-    } =
-        await supabaseClient
-            .from("Assets")
-            .update({
-                previous_price:
-                    oldPrice,
-
-                price:
-                    newPrice,
-
-                market_cap:
-                    marketCap,
-
-                volume:
-                    volume
-            })
-            .eq(
-                "id",
-                asset.id
-            );
-
-    if (error) {
-        console.error(
-            "Price update error:",
-            asset.symbol,
-            error
-        );
-
-        return;
-    }
-
-    await recordPriceHistory(
-        asset.id,
-        oldPrice,
-        newPrice
-    );
-
-    console.log(
-        `${asset.symbol}: ${oldPrice} → ${newPrice}`
-    );
 }
 
 
@@ -2294,275 +2717,13 @@ async function simulateAssetMovement(
 // MARKET EVENTS
 // ============================================================
 
-async function getActiveEventBias(
-    assetId
-) {
-    const now =
-        new Date().toISOString();
-
-    const {
-        data,
-        error
-    } =
-        await supabaseClient
-            .from("MarketEvents")
-            .select("*")
-            .eq(
-                "asset_id",
-                assetId
-            )
-            .gt(
-                "expires_at",
-                now );
-
-    if (error) {
-        console.error(
-            "Market event error:",
-            error
-        );
-
-        return 0;
-    }
-
-    if (!data?.length) {
-        return 0;
-    }
-
-    let bias = 0;
-
-    for (const event of data) {
-        let strength = 0.5;
-
-        if (
-            event.strength ===
-            "medium"
-        ) {
-            strength = 1;
-        }
-
-        if (
-            event.strength ===
-            "high"
-        ) {
-            strength = 2;
-        }
-
-        if (
-            event.direction ===
-            "down"
-        ) {
-            strength *= -1;
-        }
-
-        bias += strength;
-    }
-
-    return bias;
-}
-
-
-// ============================================================
-// RECORD PRICE HISTORY
-// ============================================================
-
-async function recordPriceHistory(
-    assetId,
-    oldPrice,
-    newPrice
-) {
-    const high =
-        Math.max(
-            oldPrice,
-            newPrice
-        );
-
-    const low =
-        Math.min(
-            oldPrice,
-            newPrice
-        );
-
-    const {
-        error
-    } =
-        await supabaseClient
-            .from("PriceHistory")
-            .insert({
-                asset_id:
-                    assetId,
-
-                price:
-                    newPrice,
-
-                open_price:
-                    oldPrice,
-
-                high_price:
-                    high,
-
-                low_price:
-                    low,
-
-                close_price:
-                    newPrice,
-
-                recorded_at:
-                    new Date().toISOString()
-            });
-
-    if (error) {
-        console.error(
-            "Price history insert error:",
-            error
-        );
-    }
-}
-
-
-// ============================================================
-// ADMIN MARKET SETTINGS
-// ============================================================
-
-async function loadMarketSettings() {
-    const {
-        data,
-        error
-    } =
-        await supabaseClient
-            .from("MarketSettings")
-            .select("*")
-            .eq("id", 1)
-            .maybeSingle();
-
-    if (error) {
-        console.error(
-            "Market settings load error:",
-            error
-        );
-
-        return;
-    }
-
-    if (!data) {
-        return;
-    }
-
-    const enabled =
-        document.getElementById(
-            "automatic-market"
-        );
-
-    const interval =
-        document.getElementById(
-            "market-interval"
-        );
-
-    const movement =
-        document.getElementById(
-            "market-movement"
-        );
-
-    if (enabled) {
-        enabled.checked =
-            data.automatic_enabled;
-    }
-
-    if (interval) {
-        interval.value =
-            data.movement_interval_minutes;
-    }
-
-    if (movement) {
-        movement.value =
-            data.max_normal_movement_percent;
-    }
-}
-
-
-async function saveMarketSettings() {
-    if (
-        !currentUser ||
-        !isMKMOwner(currentUser)
-    ) {
-        return;
-    }
-
-    const enabled =
-        document.getElementById(
-            "automatic-market"
-        )?.checked ?? true;
-
-    const interval =
-        Number(
-            document.getElementById(
-                "market-interval"
-            )?.value
-        ) || 5;
-
-    const movement =
-        Number(
-            document.getElementById(
-                "market-movement"
-            )?.value
-        ) || 1;
-
-    const {
-        error
-    } =
-        await supabaseClient
-            .from("MarketSettings")
-            .update({
-                automatic_enabled:
-                    enabled,
-
-                movement_interval_minutes:
-                    interval,
-
-                max_normal_movement_percent:
-                    movement,
-
-                updated_at:
-                    new Date().toISOString()
-            })
-            .eq(
-                "id",
-                1
-            );
-
-    if (error) {
-        console.error(
-            "Market settings save error:",
-            error
-        );
-
-        alert(
-            error.message
-        );
-
-        return;
-    }
-
-    alert(
-        "Market settings saved."
-    );
-
-    startMarketEngine();
-}
-
-
-// ============================================================
-// ADMIN MANUAL MARKET EVENT
-// ============================================================
-
 async function createMarketEvent() {
+
     if (
         !currentUser ||
-        !isMKMOwner(currentUser)
+        currentUser.id !==
+        MKM_OWNER_ID
     ) {
-        alert(
-            "You are not authorized to do this."
-        );
-
         return;
     }
 
@@ -2586,16 +2747,25 @@ async function createMarketEvent() {
             document.getElementById(
                 "event-duration"
             )?.value
-        ) || 30;
+        );
+
+    const message =
+        document.getElementById(
+            "market-event-message"
+        );
 
     if (
         !assetId ||
         !direction ||
-        !strength
+        !strength ||
+        !Number.isInteger(duration) ||
+        duration <= 0
     ) {
-        alert(
-            "Please complete the market event form."
-        );
+
+        if (message) {
+            message.textContent =
+                "Enter valid event information.";
+        }
 
         return;
     }
@@ -2603,49 +2773,327 @@ async function createMarketEvent() {
     const expiresAt =
         new Date(
             Date.now() +
-            duration *
-            60 *
-            1000
-        ).toISOString();
+            duration * 60 * 1000
+        )
+        .toISOString();
 
     const {
         error
-    } =
-        await supabaseClient
-            .from("MarketEvents")
-            .insert({
-                asset_id:
-                    assetId,
-
-                direction:
-                    direction,
-
-                strength:
-                    strength,
-
-                duration_minutes:
-                    duration,
-
-                expires_at:
-                    expiresAt
-            });
+    } = await supabaseClient
+        .from("MarketEvents")
+        .insert({
+            asset_id: assetId,
+            direction,
+            strength,
+            duration_minutes:
+                duration,
+            expires_at:
+                expiresAt
+        });
 
     if (error) {
+
+        console.error(error);
+
+        if (message) {
+            message.textContent =
+                error.message;
+        }
+
+        return;
+    }
+
+    if (message) {
+        message.textContent =
+            "Market event created.";
+    }
+}
+
+
+// ============================================================
+// PRICE HISTORY
+// ============================================================
+
+async function recordPriceHistory(
+    assetId,
+    price,
+    previousPrice = null
+) {
+
+    const close =
+        Number(price);
+
+    const previous =
+        previousPrice === null
+            ? close
+            : Number(previousPrice);
+
+    const {
+        error
+    } = await supabaseClient
+        .from("PriceHistory")
+        .insert({
+            asset_id: assetId,
+            price: close,
+            open_price: previous,
+            high_price:
+                Math.max(
+                    previous,
+                    close
+                ),
+            low_price:
+                Math.min(
+                    previous,
+                    close
+                ),
+            close_price: close,
+            recorded_at:
+                new Date().toISOString()
+        });
+
+    if (error) {
+
         console.error(
-            "Market event creation error:",
+            "Price history error:",
             error
         );
+    }
+}
 
-        alert(
-            error.message
+
+// ============================================================
+// BROWSER MARKET SIMULATION
+// ============================================================
+
+async function runMarketSimulation() {
+
+    try {
+
+        const {
+            data: settings
+        } = await supabaseClient
+            .from("MarketSettings")
+            .select("*")
+            .eq("id", 1)
+            .maybeSingle();
+
+        if (
+            !settings ||
+            !settings.automatic_enabled
+        ) {
+            return;
+        }
+
+        const {
+            data: assets,
+            error
+        } = await supabaseClient
+            .from("Assets")
+            .select("*");
+
+        if (error) {
+            throw error;
+        }
+
+        for (const asset of assets || []) {
+
+            await simulateAssetMovement(
+                asset,
+                settings
+            );
+        }
+
+        if (
+            document
+                .getElementById("market")
+                ?.classList.contains(
+                    "hidden"
+                ) === false
+        ) {
+
+            await loadMarket();
+        }
+
+        if (currentAsset) {
+
+            await refreshCurrentAsset();
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Market simulation error:",
+            error
+        );
+    }
+}
+
+
+async function simulateAssetMovement(
+    asset,
+    settings
+) {
+
+    const current =
+        Number(asset.price || 0);
+
+    if (current <= 0) {
+        return;
+    }
+
+    const maxMovement =
+        Number(
+            settings.max_normal_movement_percent ||
+            1
+        );
+
+    let movement =
+        (
+            Math.random() * 2 - 1
+        ) *
+        maxMovement;
+
+    const {
+        data: events
+    } = await supabaseClient
+        .from("MarketEvents")
+        .select("*")
+        .eq(
+            "asset_id",
+            asset.id
+        )
+        .gt(
+            "expires_at",
+            new Date().toISOString()
+        )
+        .order(
+            "created_at",
+            {
+                ascending: false
+            }
+        )
+        .limit(1);
+
+    const event =
+        events?.[0];
+
+    if (event) {
+
+        let multiplier = 1;
+
+        if (
+            event.strength ===
+            "low"
+        ) {
+
+            multiplier = 1.5;
+
+        } else if (
+            event.strength ===
+            "medium"
+        ) {
+
+            multiplier = 2.5;
+
+        } else if (
+            event.strength ===
+            "high"
+        ) {
+
+            multiplier = 4;
+        }
+
+        movement =
+            Math.abs(movement) *
+            multiplier *
+            (
+                event.direction ===
+                "up"
+                    ? 1
+                    : -1
+            );
+    }
+
+    const newPrice =
+        Math.max(
+            0.01,
+            current *
+            (
+                1 +
+                movement / 100
+            )
+        );
+
+    const {
+        error
+    } = await supabaseClient
+        .from("Assets")
+        .update({
+            previous_price:
+                current,
+
+            price:
+                newPrice
+        })
+        .eq(
+            "id",
+            asset.id
+        );
+
+    if (error) {
+
+        console.error(
+            "Asset update failed:",
+            error
         );
 
         return;
     }
 
-    alert(
-        "Market event applied."
+    await recordPriceHistory(
+        asset.id,
+        newPrice,
+        current
     );
+}
+
+
+// ------------------------------------------------------------
+// START MARKET TIMER
+// ------------------------------------------------------------
+
+async function startMarketTimer() {
+
+    if (marketTimer) {
+
+        clearInterval(
+            marketTimer
+        );
+    }
+
+    const {
+        data: settings
+    } = await supabaseClient
+        .from("MarketSettings")
+        .select(
+            "movement_interval_minutes"
+        )
+        .eq("id", 1)
+        .maybeSingle();
+
+    const minutes =
+        Number(
+            settings?.movement_interval_minutes ||
+            5
+        );
+
+    marketTimer =
+        setInterval(
+            runMarketSimulation,
+            minutes *
+            60 *
+            1000
+        );
 }
 
 
@@ -2654,363 +3102,382 @@ async function createMarketEvent() {
 // ============================================================
 
 async function loadNews() {
-    const list =
+
+    const {
+        data: news,
+        error
+    } = await supabaseClient
+        .from("News")
+        .select(`
+            *,
+            Assets (
+                name,
+                symbol
+            )
+        `)
+        .eq(
+            "published",
+            true
+        )
+        .order(
+            "created_at",
+            {
+                ascending: false
+            }
+        );
+
+    if (error) {
+
+        console.error(error);
+        return;
+    }
+
+    const container =
         document.getElementById(
             "news-list"
         );
 
-    if (!list) {
+    if (!container) {
         return;
     }
 
-    list.innerHTML =
-        `<div class="empty-state">
-            Loading news...
-        </div>`;
+    if (!news || news.length === 0) {
 
-    const {
-        data,
-        error
-    } =
-        await supabaseClient
-            .from("News")
-            .select(`
-                *,
-                Assets (
-                    name,
-                    symbol
-                )
-            `)
-            .eq(
-                "published",
-                true
-            )
-            .order(
-                "created_at",
-                {
-                    ascending: false
-                }
+        container.innerHTML =
+            "<p>No news available.</p>";
+
+        showPage("news");
+
+        return;
+    }
+
+    container.innerHTML = "";
+
+    news.forEach(article => {
+
+        const card =
+            document.createElement(
+                "div"
             );
 
-    if (error) {
-        console.error(
-            "News error:",
-            error
-        );
+        card.className =
+            "card";
 
-        list.innerHTML =
-            `<div class="empty-state">
-                Unable to load news.
-            </div>`;
-
-        return;
-    }
-
-    if (!data?.length) {
-        list.innerHTML =
-            `<div class="empty-state">
-                No news has been published yet.
-            </div>`;
-
-        return;
-    }
-
-    list.innerHTML =
-        data
-            .map(
-                article =>
-                    newsArticleHTML(
-                        article
-                    )
-            )
-            .join("");
-}
-
-
-function newsArticleHTML(
-    article
-) {
-    const asset =
-        article.Assets;
-
-    const sentimentClass =
-        article.sentiment ===
-        "positive"
-            ? "positive"
-            : article.sentiment ===
-              "negative"
-                ? "negative"
-                : "";
-
-    const date =
-        article.created_at
-            ? new Date(
-                article.created_at
-            ).toLocaleString()
-            : "";
-
-    return `
-        <article class="news-card">
-
-            <div class="news-meta">
-                <span>
-                    ${escapeHTML(
-                        asset?.symbol ||
-                        "MARKET"
-                    )}
-                </span>
-
-                <span>
-                    ${escapeHTML(
-                        article.impact ||
-                        "low"
-                    )}
-                </span>
-
-                <span>
-                    ${escapeHTML(
-                        date
-                    )}
-                </span>
-            </div>
-
+        card.innerHTML = `
             <h2>
                 ${escapeHTML(
-                    article.headline ||
-                    ""
+                    article.headline
                 )}
             </h2>
 
-            <p class="${sentimentClass}">
+            <p>
                 ${escapeHTML(
-                    article.content ||
-                    ""
+                    article.content
                 )}
             </p>
 
-        </article>
-    `;
-}
-
-
-// ============================================================
-// ADMIN NEWS CREATION
-// ============================================================
-
-async function createNews() {
-    if (
-        !currentUser ||
-        !isMKMOwner(currentUser)
-    ) {
-        alert(
-            "You are not authorized to do this."
-        );
-
-        return;
-    }
-
-    const headline =
-        document.getElementById(
-            "news-headline"
-        )?.value.trim();
-
-    const content =
-        document.getElementById(
-            "news-content"
-        )?.value.trim();
-
-    const assetId =
-        document.getElementById(
-            "news-asset"
-        )?.value || null;
-
-    const sentiment =
-        document.getElementById(
-            "news-sentiment"
-        )?.value || "neutral";
-
-    const impact =
-        document.getElementById(
-            "news-impact"
-        )?.value || "low";
-
-    if (
-        !headline ||
-        !content
-    ) {
-        alert(
-            "Please enter a headline and article."
-        );
-
-        return;
-    }
-
-    const {
-        error
-    } =
-        await supabaseClient
-            .from("News")
-            .insert({
-                headline,
-                content,
-                asset_id:
-                    assetId || null,
-                sentiment,
-                impact,
-                published: true
-            });
-
-    if (error) {
-        console.error(
-            "News creation error:",
-            error
-        );
-
-        alert(
-            error.message
-        );
-
-        return;
-    }
-
-    const form =
-        document.getElementById(
-            "news-form"
-        );
-
-    if (form) {
-        form.reset();
-    }
-
-    alert(
-        "News published."
-    );
-
-    await loadNews();
-}
-
-
-// ============================================================
-// ADMIN ASSET DROPDOWNS
-// ============================================================
-
-async function populateAdminAssetSelects() {
-    const {
-        data,
-        error
-    } =
-        await supabaseClient
-            .from("Assets")
-            .select("id, name, symbol")
-            .order(
-                "name",
-                {
-                    ascending: true
+            <small>
+                ${article.Assets
+                    ? escapeHTML(
+                        article.Assets.symbol
+                    )
+                    : "MKM HQ"
                 }
+                ·
+                ${formatDateTime(
+                    article.created_at
+                )}
+            </small>
+        `;
+
+        container.appendChild(card);
+    });
+
+    showPage("news");
+}
+
+
+// ============================================================
+// GLOBAL SESSION LISTENER
+// ============================================================
+
+supabaseClient.auth.onAuthStateChange(
+    async (event, session) => {
+
+        if (session?.user) {
+
+            currentUser =
+                session.user;
+
+        } else {
+
+            currentUser = null;
+            currentProfile = null;
+        }
+    }
+);
+
+
+// ============================================================
+// FORM LISTENERS
+// ============================================================
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        const signupForm =
+            document.getElementById(
+                "signup-form"
             );
 
-    if (error) {
-        console.error(
-            "Asset select error:",
-            error
+        if (signupForm) {
+
+            signupForm.addEventListener(
+                "submit",
+                async event => {
+
+                    event.preventDefault();
+
+                    const username =
+                        document.getElementById(
+                            "username"
+                        ).value.trim();
+
+                    const email =
+                        document.getElementById(
+                            "email"
+                        ).value.trim();
+
+                    const password =
+                        document.getElementById(
+                            "password"
+                        ).value;
+
+                    await register(
+                        username,
+                        email,
+                        password
+                    );
+                }
+            );
+        }
+
+        const loginForm =
+            document.getElementById(
+                "login-form"
+            );
+
+        if (loginForm) {
+
+            loginForm.addEventListener(
+                "submit",
+                async event => {
+
+                    event.preventDefault();
+
+                    const email =
+                        document.getElementById(
+                            "login-email"
+                        ).value.trim();
+
+                    const password =
+                        document.getElementById(
+                            "login-password"
+                        ).value;
+
+                    await login(
+                        email,
+                        password
+                    );
+                }
+            );
+        }
+    }
+);
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function setText(
+    elementId,
+    value
+) {
+
+    const element =
+        document.getElementById(
+            elementId
         );
 
-        return;
+    if (element) {
+        element.textContent =
+            value;
+    }
+}
+
+
+function formatMoney(value) {
+
+    const number =
+        Number(value || 0);
+
+    return new Intl.NumberFormat(
+        "en-GB",
+        {
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }
+    ).format(number);
+}
+
+
+function formatSignedMoney(value) {
+
+    const number =
+        Number(value || 0);
+
+    if (number > 0) {
+
+        return `+${formatMoney(number)}`;
+
     }
 
-    const selectors = [
-        document.getElementById(
-            "event-asset"
-        ),
-        document.getElementById(
-            "news-asset"
-        )
-    ];
+    return formatMoney(number);
+}
 
-    selectors.forEach(
-        select => {
-            if (!select) {
-                return;
-            }
 
-            select.innerHTML =
-                `<option value="">
-                    Market / General
-                </option>`;
+function formatPercent(value) {
 
-            (data || [])
-                .forEach(
-                    asset => {
-                        const option =
-                            document.createElement(
-                                "option"
-                            );
+    return `${Number(value || 0).toFixed(2)}%`;
+}
 
-                        option.value =
-                            asset.id;
 
-                        option.textContent =
-                            `${asset.symbol} — ${asset.name}`;
+function formatSignedPercent(value) {
 
-                        select.appendChild(
-                            option
-                        );
-                    }
-                );
-        }
+    const number =
+        Number(value || 0);
+
+    if (number > 0) {
+
+        return `+${number.toFixed(2)}%`;
+    }
+
+    return `${number.toFixed(2)}%`;
+}
+
+
+function formatNumber(value) {
+
+    return new Intl.NumberFormat(
+        "en-GB"
+    ).format(
+        Number(value || 0)
     );
 }
 
 
-// ============================================================
-// HTML ESCAPING
-// ============================================================
+function formatDate(value) {
 
-function escapeHTML(
-    value
-) {
+    if (!value) {
+        return "—";
+    }
+
+    const date =
+        new Date(value);
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+        return "—";
+    }
+
+    return new Intl.DateTimeFormat(
+        "en-GB",
+        {
+            day: "2-digit",
+            month: "short",
+            year: "numeric"
+        }
+    ).format(date);
+}
+
+
+function formatDateTime(value) {
+
+    if (!value) {
+        return "—";
+    }
+
+    const date =
+        new Date(value);
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+        return "—";
+    }
+
+    return new Intl.DateTimeFormat(
+        "en-GB",
+        {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+        }
+    ).format(date);
+}
+
+
+function escapeHTML(value) {
+
     return String(
         value ?? ""
     )
-        .replaceAll(
-            "&",
-            "&amp;"
-        )
-        .replaceAll(
-            "<",
-            "&lt;"
-        )
-        .replaceAll(
-            ">",
-            "&gt;"
-        )
-        .replaceAll(
-            '"',
-            "&quot;"
-        )
-        .replaceAll(
-            "'",
-            "&#039;"
-        );
+    .replace(
+        /&/g,
+        "&amp;"
+    )
+    .replace(
+        /</g,
+        "&lt;"
+    )
+    .replace(
+        />/g,
+        "&gt;"
+    )
+    .replace(
+        /"/g,
+        "&quot;"
+    )
+    .replace(
+        /'/g,
+        "&#039;"
+    );
 }
 
 
 // ============================================================
-// START APP
+// INITIALIZATION
 // ============================================================
 
 document.addEventListener(
     "DOMContentLoaded",
     async () => {
-        setupForms();
 
         await checkSession();
 
-        if (
-            currentUser &&
-            isMKMOwner(currentUser)
-        ) {
-            await populateAdminAssetSelects();
-        }
+        await startMarketTimer();
+
     }
 );
+
