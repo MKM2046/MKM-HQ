@@ -1,6 +1,6 @@
 // ============================================================
 // MKM HQ - APP.JS
-// Supabase + Market + Admin + Interactive Candlestick Charts
+// Supabase + Market + Admin + News + Simulated Market Engine
 // ============================================================
 
 console.log("MKM app.js loaded");
@@ -24,6 +24,8 @@ let currentChartSeries = null;
 let currentChartAssetId = null;
 let currentChartPeriod = "1D";
 let chartResizeObserver = null;
+
+let marketEngineTimer = null;
 
 
 // ============================================================
@@ -56,6 +58,10 @@ function showPage(pageId) {
     if (pageId === "admin") {
         loadAdminData();
     }
+
+    if (pageId === "news") {
+        loadNews();
+    }
 }
 
 
@@ -67,6 +73,7 @@ function isMKMOwner(user) {
     return user && user.id === MKM_OWNER_ID;
 }
 
+
 function setupAdminAccess(user) {
     const adminButtons = document.querySelectorAll(
         ".admin-link, [data-page='admin']"
@@ -77,9 +84,6 @@ function setupAdminAccess(user) {
             isMKMOwner(user) ? "" : "none";
     });
 
-    // Your current HTML has the admin button as a normal
-    // .action button without an admin class.
-    // Find it by its text and show it only to the owner.
     document.querySelectorAll(".action").forEach(button => {
         if (
             button.textContent
@@ -265,6 +269,8 @@ async function login() {
 
         showPage("dashboard");
 
+        startMarketEngine();
+
     } catch (error) {
         console.error(
             "Unexpected login error:",
@@ -330,6 +336,8 @@ function setupForms() {
 // ============================================================
 
 async function logout() {
+    stopMarketEngine();
+
     const { error } =
         await supabaseClient.auth.signOut();
 
@@ -373,6 +381,7 @@ async function checkSession() {
 
     if (currentUser) {
         showPage("dashboard");
+        startMarketEngine();
     } else {
         showPage("landing");
     }
@@ -385,6 +394,12 @@ supabaseClient.auth.onAuthStateChange(
             session?.user || null;
 
         setupAdminAccess(currentUser);
+
+        if (currentUser) {
+            startMarketEngine();
+        } else {
+            stopMarketEngine();
+        }
     }
 );
 
@@ -1825,6 +1840,8 @@ async function loadAdminData() {
                 totalCap
             );
     }
+
+    await loadMarketSettings();
 }
 
 
@@ -2050,6 +2067,902 @@ async function addCompany() {
 
 
 // ============================================================
+// MARKET ENGINE
+// ============================================================
+
+async function startMarketEngine() {
+    stopMarketEngine();
+
+    await runMarketSimulation();
+
+    marketEngineTimer =
+        setInterval(
+            runMarketSimulation,
+            5 * 60 * 1000
+        );
+
+    console.log(
+        "Simulated market engine started."
+    );
+}
+
+
+function stopMarketEngine() {
+    if (marketEngineTimer) {
+        clearInterval(
+            marketEngineTimer
+        );
+
+        marketEngineTimer = null;
+    }
+}
+
+
+async function runMarketSimulation() {
+    if (!currentUser) {
+        return;
+    }
+
+    const {
+        data: settings,
+        error: settingsError
+    } =
+        await supabaseClient
+            .from("MarketSettings")
+            .select("*")
+            .eq("id", 1)
+            .maybeSingle();
+
+    if (settingsError) {
+        console.error(
+            "Market settings error:",
+            settingsError
+        );
+
+        return;
+    }
+
+    if (
+        !settings ||
+        settings.automatic_enabled === false
+    ) {
+        return;
+    }
+
+    const {
+        data: assets,
+        error: assetError
+    } =
+        await supabaseClient
+            .from("Assets")
+            .select("*");
+
+    if (assetError) {
+        console.error(
+            "Market engine asset error:",
+            assetError
+        );
+
+        return;
+    }
+
+    for (const asset of assets || []) {
+        await simulateAssetMovement(
+            asset,
+            settings
+        );
+    }
+
+    if (
+        document
+            .getElementById("market")
+            ?.classList.contains("active")
+    ) {
+        await loadMarketData();
+    }
+}
+
+
+async function simulateAssetMovement(
+    asset,
+    settings
+) {
+    const oldPrice =
+        Number(asset.price);
+
+    if (
+        !Number.isFinite(oldPrice) ||
+        oldPrice <= 0
+    ) {
+        return;
+    }
+
+    const maxMovement =
+        Number(
+            settings.max_normal_movement_percent
+        ) || 1;
+
+    const randomPercent =
+        (
+            Math.random() *
+            2 -
+            1
+        ) *
+        maxMovement;
+
+    const eventBias =
+        await getActiveEventBias(
+            asset.id
+        );
+
+    const finalPercent =
+        randomPercent +
+        eventBias;
+
+    const multiplier =
+        1 +
+        finalPercent / 100;
+
+    const newPrice =
+        Math.max(
+            0.01,
+            Number(
+                (
+                    oldPrice *
+                    multiplier
+                ).toFixed(2)
+            )
+        );
+
+    if (
+        newPrice === oldPrice
+    ) {
+        return;
+    }
+
+    const marketCap =
+        Number(asset.market_cap) > 0
+            ? Number(
+                (
+                    Number(asset.market_cap) *
+                    (
+                        newPrice /
+                        oldPrice
+                    )
+                ).toFixed(2)
+            )
+            : null;
+
+    const volume =
+        Math.max(
+            0,
+            Number(asset.volume) || 0
+        ) +
+        Math.round(
+            Math.abs(
+                newPrice -
+                oldPrice
+            ) * 100
+        );
+
+    const {
+        error
+    } =
+        await supabaseClient
+            .from("Assets")
+            .update({
+                previous_price:
+                    oldPrice,
+
+                price:
+                    newPrice,
+
+                market_cap:
+                    marketCap,
+
+                volume:
+                    volume
+            })
+            .eq(
+                "id",
+                asset.id
+            );
+
+    if (error) {
+        console.error(
+            "Price update error:",
+            asset.symbol,
+            error
+        );
+
+        return;
+    }
+
+    await recordPriceHistory(
+        asset.id,
+        oldPrice,
+        newPrice
+    );
+
+    console.log(
+        `${asset.symbol}: ${oldPrice} → ${newPrice}`
+    );
+}
+
+
+// ============================================================
+// MARKET EVENTS
+// ============================================================
+
+async function getActiveEventBias(
+    assetId
+) {
+    const now =
+        new Date().toISOString();
+
+    const {
+        data,
+        error
+    } =
+        await supabaseClient
+            .from("MarketEvents")
+            .select("*")
+            .eq(
+                "asset_id",
+                assetId
+            )
+            .gt(
+                "expires_at",
+                now );
+
+    if (error) {
+        console.error(
+            "Market event error:",
+            error
+        );
+
+        return 0;
+    }
+
+    if (!data?.length) {
+        return 0;
+    }
+
+    let bias = 0;
+
+    for (const event of data) {
+        let strength = 0.5;
+
+        if (
+            event.strength ===
+            "medium"
+        ) {
+            strength = 1;
+        }
+
+        if (
+            event.strength ===
+            "high"
+        ) {
+            strength = 2;
+        }
+
+        if (
+            event.direction ===
+            "down"
+        ) {
+            strength *= -1;
+        }
+
+        bias += strength;
+    }
+
+    return bias;
+}
+
+
+// ============================================================
+// RECORD PRICE HISTORY
+// ============================================================
+
+async function recordPriceHistory(
+    assetId,
+    oldPrice,
+    newPrice
+) {
+    const high =
+        Math.max(
+            oldPrice,
+            newPrice
+        );
+
+    const low =
+        Math.min(
+            oldPrice,
+            newPrice
+        );
+
+    const {
+        error
+    } =
+        await supabaseClient
+            .from("PriceHistory")
+            .insert({
+                asset_id:
+                    assetId,
+
+                price:
+                    newPrice,
+
+                open_price:
+                    oldPrice,
+
+                high_price:
+                    high,
+
+                low_price:
+                    low,
+
+                close_price:
+                    newPrice,
+
+                recorded_at:
+                    new Date().toISOString()
+            });
+
+    if (error) {
+        console.error(
+            "Price history insert error:",
+            error
+        );
+    }
+}
+
+
+// ============================================================
+// ADMIN MARKET SETTINGS
+// ============================================================
+
+async function loadMarketSettings() {
+    const {
+        data,
+        error
+    } =
+        await supabaseClient
+            .from("MarketSettings")
+            .select("*")
+            .eq("id", 1)
+            .maybeSingle();
+
+    if (error) {
+        console.error(
+            "Market settings load error:",
+            error
+        );
+
+        return;
+    }
+
+    if (!data) {
+        return;
+    }
+
+    const enabled =
+        document.getElementById(
+            "automatic-market"
+        );
+
+    const interval =
+        document.getElementById(
+            "market-interval"
+        );
+
+    const movement =
+        document.getElementById(
+            "market-movement"
+        );
+
+    if (enabled) {
+        enabled.checked =
+            data.automatic_enabled;
+    }
+
+    if (interval) {
+        interval.value =
+            data.movement_interval_minutes;
+    }
+
+    if (movement) {
+        movement.value =
+            data.max_normal_movement_percent;
+    }
+}
+
+
+async function saveMarketSettings() {
+    if (
+        !currentUser ||
+        !isMKMOwner(currentUser)
+    ) {
+        return;
+    }
+
+    const enabled =
+        document.getElementById(
+            "automatic-market"
+        )?.checked ?? true;
+
+    const interval =
+        Number(
+            document.getElementById(
+                "market-interval"
+            )?.value
+        ) || 5;
+
+    const movement =
+        Number(
+            document.getElementById(
+                "market-movement"
+            )?.value
+        ) || 1;
+
+    const {
+        error
+    } =
+        await supabaseClient
+            .from("MarketSettings")
+            .update({
+                automatic_enabled:
+                    enabled,
+
+                movement_interval_minutes:
+                    interval,
+
+                max_normal_movement_percent:
+                    movement,
+
+                updated_at:
+                    new Date().toISOString()
+            })
+            .eq(
+                "id",
+                1
+            );
+
+    if (error) {
+        console.error(
+            "Market settings save error:",
+            error
+        );
+
+        alert(
+            error.message
+        );
+
+        return;
+    }
+
+    alert(
+        "Market settings saved."
+    );
+
+    startMarketEngine();
+}
+
+
+// ============================================================
+// ADMIN MANUAL MARKET EVENT
+// ============================================================
+
+async function createMarketEvent() {
+    if (
+        !currentUser ||
+        !isMKMOwner(currentUser)
+    ) {
+        alert(
+            "You are not authorized to do this."
+        );
+
+        return;
+    }
+
+    const assetId =
+        document.getElementById(
+            "event-asset"
+        )?.value;
+
+    const direction =
+        document.getElementById(
+            "event-direction"
+        )?.value;
+
+    const strength =
+        document.getElementById(
+            "event-strength"
+        )?.value;
+
+    const duration =
+        Number(
+            document.getElementById(
+                "event-duration"
+            )?.value
+        ) || 30;
+
+    if (
+        !assetId ||
+        !direction ||
+        !strength
+    ) {
+        alert(
+            "Please complete the market event form."
+        );
+
+        return;
+    }
+
+    const expiresAt =
+        new Date(
+            Date.now() +
+            duration *
+            60 *
+            1000
+        ).toISOString();
+
+    const {
+        error
+    } =
+        await supabaseClient
+            .from("MarketEvents")
+            .insert({
+                asset_id:
+                    assetId,
+
+                direction:
+                    direction,
+
+                strength:
+                    strength,
+
+                duration_minutes:
+                    duration,
+
+                expires_at:
+                    expiresAt
+            });
+
+    if (error) {
+        console.error(
+            "Market event creation error:",
+            error
+        );
+
+        alert(
+            error.message
+        );
+
+        return;
+    }
+
+    alert(
+        "Market event applied."
+    );
+}
+
+
+// ============================================================
+// NEWS
+// ============================================================
+
+async function loadNews() {
+    const list =
+        document.getElementById(
+            "news-list"
+        );
+
+    if (!list) {
+        return;
+    }
+
+    list.innerHTML =
+        `<div class="empty-state">
+            Loading news...
+        </div>`;
+
+    const {
+        data,
+        error
+    } =
+        await supabaseClient
+            .from("News")
+            .select(`
+                *,
+                Assets (
+                    name,
+                    symbol
+                )
+            `)
+            .eq(
+                "published",
+                true
+            )
+            .order(
+                "created_at",
+                {
+                    ascending: false
+                }
+            );
+
+    if (error) {
+        console.error(
+            "News error:",
+            error
+        );
+
+        list.innerHTML =
+            `<div class="empty-state">
+                Unable to load news.
+            </div>`;
+
+        return;
+    }
+
+    if (!data?.length) {
+        list.innerHTML =
+            `<div class="empty-state">
+                No news has been published yet.
+            </div>`;
+
+        return;
+    }
+
+    list.innerHTML =
+        data
+            .map(
+                article =>
+                    newsArticleHTML(
+                        article
+                    )
+            )
+            .join("");
+}
+
+
+function newsArticleHTML(
+    article
+) {
+    const asset =
+        article.Assets;
+
+    const sentimentClass =
+        article.sentiment ===
+        "positive"
+            ? "positive"
+            : article.sentiment ===
+              "negative"
+                ? "negative"
+                : "";
+
+    const date =
+        article.created_at
+            ? new Date(
+                article.created_at
+            ).toLocaleString()
+            : "";
+
+    return `
+        <article class="news-card">
+
+            <div class="news-meta">
+                <span>
+                    ${escapeHTML(
+                        asset?.symbol ||
+                        "MARKET"
+                    )}
+                </span>
+
+                <span>
+                    ${escapeHTML(
+                        article.impact ||
+                        "low"
+                    )}
+                </span>
+
+                <span>
+                    ${escapeHTML(
+                        date
+                    )}
+                </span>
+            </div>
+
+            <h2>
+                ${escapeHTML(
+                    article.headline ||
+                    ""
+                )}
+            </h2>
+
+            <p class="${sentimentClass}">
+                ${escapeHTML(
+                    article.content ||
+                    ""
+                )}
+            </p>
+
+        </article>
+    `;
+}
+
+
+// ============================================================
+// ADMIN NEWS CREATION
+// ============================================================
+
+async function createNews() {
+    if (
+        !currentUser ||
+        !isMKMOwner(currentUser)
+    ) {
+        alert(
+            "You are not authorized to do this."
+        );
+
+        return;
+    }
+
+    const headline =
+        document.getElementById(
+            "news-headline"
+        )?.value.trim();
+
+    const content =
+        document.getElementById(
+            "news-content"
+        )?.value.trim();
+
+    const assetId =
+        document.getElementById(
+            "news-asset"
+        )?.value || null;
+
+    const sentiment =
+        document.getElementById(
+            "news-sentiment"
+        )?.value || "neutral";
+
+    const impact =
+        document.getElementById(
+            "news-impact"
+        )?.value || "low";
+
+    if (
+        !headline ||
+        !content
+    ) {
+        alert(
+            "Please enter a headline and article."
+        );
+
+        return;
+    }
+
+    const {
+        error
+    } =
+        await supabaseClient
+            .from("News")
+            .insert({
+                headline,
+                content,
+                asset_id:
+                    assetId || null,
+                sentiment,
+                impact,
+                published: true
+            });
+
+    if (error) {
+        console.error(
+            "News creation error:",
+            error
+        );
+
+        alert(
+            error.message
+        );
+
+        return;
+    }
+
+    const form =
+        document.getElementById(
+            "news-form"
+        );
+
+    if (form) {
+        form.reset();
+    }
+
+    alert(
+        "News published."
+    );
+
+    await loadNews();
+}
+
+
+// ============================================================
+// ADMIN ASSET DROPDOWNS
+// ============================================================
+
+async function populateAdminAssetSelects() {
+    const {
+        data,
+        error
+    } =
+        await supabaseClient
+            .from("Assets")
+            .select("id, name, symbol")
+            .order(
+                "name",
+                {
+                    ascending: true
+                }
+            );
+
+    if (error) {
+        console.error(
+            "Asset select error:",
+            error
+        );
+
+        return;
+    }
+
+    const selectors = [
+        document.getElementById(
+            "event-asset"
+        ),
+        document.getElementById(
+            "news-asset"
+        )
+    ];
+
+    selectors.forEach(
+        select => {
+            if (!select) {
+                return;
+            }
+
+            select.innerHTML =
+                `<option value="">
+                    Market / General
+                </option>`;
+
+            (data || [])
+                .forEach(
+                    asset => {
+                        const option =
+                            document.createElement(
+                                "option"
+                            );
+
+                        option.value =
+                            asset.id;
+
+                        option.textContent =
+                            `${asset.symbol} — ${asset.name}`;
+
+                        select.appendChild(
+                            option
+                        );
+                    }
+                );
+        }
+    );
+}
+
+
+// ============================================================
 // HTML ESCAPING
 // ============================================================
 
@@ -2088,8 +3001,16 @@ function escapeHTML(
 
 document.addEventListener(
     "DOMContentLoaded",
-    () => {
+    async () => {
         setupForms();
-        checkSession();
+
+        await checkSession();
+
+        if (
+            currentUser &&
+            isMKMOwner(currentUser)
+        ) {
+            await populateAdminAssetSelects();
+        }
     }
 );
