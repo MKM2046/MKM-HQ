@@ -35,7 +35,7 @@ let currentMarketCategory = "all";
 
 let chart = null;
 let candleSeries = null;
-let volumeSeries = null;
+let chartResizeObserver = null;
 
 let currentChartPeriod = "1D";
 let currentTradeSide = "buy";
@@ -107,7 +107,7 @@ async function register(username, email, password) {
             .insert({
                 id: data.user.id,
                 mkm_id: mkmId,
-                username: username,
+                username,
                 display_name: username,
                 bio: "",
                 status: "active"
@@ -345,6 +345,11 @@ async function loadDashboard() {
         formatSignedMoney(portfolioValue.pnl)
     );
 
+    applyTrendStyle(
+        document.getElementById("pnl"),
+        portfolioValue.pnl
+    );
+
     const adminButton =
         document.getElementById("admin-button");
 
@@ -355,15 +360,11 @@ async function loadDashboard() {
             MKM_OWNER_ID
         ) {
 
-            adminButton.classList.remove(
-                "hidden"
-            );
+            adminButton.classList.remove("hidden");
 
         } else {
 
-            adminButton.classList.add(
-                "hidden"
-            );
+            adminButton.classList.add("hidden");
         }
     }
 
@@ -420,29 +421,16 @@ async function calculatePortfolioValue() {
     (positions || []).forEach(position => {
 
         const price =
-            Number(
-                position.Assets?.price || 0
-            );
+            Number(position.Assets?.price || 0);
 
         const shares =
-            Number(
-                position.shares || 0
-            );
+            Number(position.shares || 0);
 
         const average =
-            Number(
-                position.average_price || 0
-            );
+            Number(position.average_price || 0);
 
-        const value =
-            shares * price;
-
-        const pnl =
-            shares *
-            (price - average);
-
-        totalValue += value;
-        totalPnl += pnl;
+        totalValue += shares * price;
+        totalPnl += shares * (price - average);
     });
 
     return {
@@ -506,18 +494,14 @@ async function loadPortfolio() {
 
     setText(
         "portfolio-cash",
-        formatMoney(
-            profile?.balance || 0
-        )
+        formatMoney(profile?.balance || 0)
     );
 
     let totalValue = 0;
     let totalPnl = 0;
 
     const container =
-        document.getElementById(
-            "portfolio-list"
-        );
+        document.getElementById("portfolio-list");
 
     if (!container) {
         return;
@@ -534,34 +518,26 @@ async function loadPortfolio() {
 
         positions.forEach(position => {
 
-            const asset =
-                position.Assets;
+            const asset = position.Assets;
 
             if (!asset) {
                 return;
             }
 
             const shares =
-                Number(
-                    position.shares || 0
-                );
+                Number(position.shares || 0);
 
             const average =
-                Number(
-                    position.average_price || 0
-                );
+                Number(position.average_price || 0);
 
             const price =
-                Number(
-                    asset.price || 0
-                );
+                Number(asset.price || 0);
 
             const value =
                 shares * price;
 
             const pnl =
-                shares *
-                (price - average);
+                shares * (price - average);
 
             totalValue += value;
             totalPnl += pnl;
@@ -569,8 +545,7 @@ async function loadPortfolio() {
             const row =
                 document.createElement("div");
 
-            row.className =
-                "market-row";
+            row.className = "market-row";
 
             row.innerHTML = `
                 <div>
@@ -595,7 +570,10 @@ async function loadPortfolio() {
                     ${formatMoney(value)}
                 </div>
 
-                <div>
+                <div
+                    class="${pnl >= 0 ? "positive" : "negative"}"
+                    style="color:${getTrendColor(pnl)};font-weight:700;"
+                >
                     ${formatSignedMoney(pnl)}
                 </div>
 
@@ -609,7 +587,10 @@ async function loadPortfolio() {
 
             button?.addEventListener(
                 "click",
-                () => loadAssetDetail(asset.id)
+                event => {
+                    event.stopPropagation();
+                    loadAssetDetail(asset.id);
+                }
             );
 
             container.appendChild(row);
@@ -624,6 +605,11 @@ async function loadPortfolio() {
     setText(
         "portfolio-total-pnl",
         formatSignedMoney(totalPnl)
+    );
+
+    applyTrendStyle(
+        document.getElementById("portfolio-total-pnl"),
+        totalPnl
     );
 
     showPage("portfolio-page");
@@ -659,9 +645,7 @@ async function loadTransactions() {
         });
 
     const container =
-        document.getElementById(
-            "transactions-list"
-        );
+        document.getElementById("transactions-list");
 
     if (!container) {
         return;
@@ -679,10 +663,7 @@ async function loadTransactions() {
         return;
     }
 
-    if (
-        !transactions ||
-        transactions.length === 0
-    ) {
+    if (!transactions || transactions.length === 0) {
 
         container.innerHTML =
             "<p>No transactions yet.</p>";
@@ -699,18 +680,28 @@ async function loadTransactions() {
         const row =
             document.createElement("div");
 
-        row.className =
-            "market-row";
+        row.className = "market-row";
 
         const side =
             String(
-                transaction.side || ""
-            ).toUpperCase();
+                transaction.side ||
+                transaction.type ||
+                ""
+            ).toLowerCase();
 
         const sideClass =
-            transaction.side === "buy"
+            side === "buy"
                 ? "positive"
-                : "negative";
+                : side === "sell"
+                    ? "negative"
+                    : "";
+
+        const sideColor =
+            side === "buy"
+                ? "#22c55e"
+                : side === "sell"
+                    ? "#ef4444"
+                    : "#94a3b8";
 
         row.innerHTML = `
             <div>
@@ -729,8 +720,11 @@ async function loadTransactions() {
                 </span>
             </div>
 
-            <div class="${sideClass}">
-                ${side}
+            <div
+                class="${sideClass}"
+                style="color:${sideColor};font-weight:800;"
+            >
+                ${escapeHTML(side.toUpperCase())}
             </div>
 
             <div>
@@ -738,21 +732,15 @@ async function loadTransactions() {
             </div>
 
             <div>
-                ${formatMoney(
-                    transaction.price || 0
-                )}
+                ${formatMoney(transaction.price || 0)}
             </div>
 
             <div>
-                ${formatMoney(
-                    transaction.total || 0
-                )}
+                ${formatMoney(transaction.total || 0)}
             </div>
 
             <div>
-                ${formatDateTime(
-                    transaction.created_at
-                )}
+                ${formatDateTime(transaction.created_at)}
             </div>
         `;
 
@@ -833,8 +821,7 @@ async function loadMarket() {
         return;
     }
 
-    marketAssets =
-        assets || [];
+    marketAssets = assets || [];
 
     renderMarket();
 
@@ -845,33 +832,22 @@ async function loadMarket() {
 function renderMarket() {
 
     const searchInput =
-        document.getElementById(
-            "market-search"
-        );
+        document.getElementById("market-search");
 
     const search =
-        (
-            searchInput?.value ||
-            ""
-        )
-        .trim()
-        .toLowerCase();
+        (searchInput?.value || "")
+            .trim()
+            .toLowerCase();
 
-    let assets =
-        [...marketAssets];
+    let assets = [...marketAssets];
 
-    if (
-        currentMarketCategory !==
-        "all"
-    ) {
+    if (currentMarketCategory !== "all") {
 
         assets =
             assets.filter(
                 asset =>
-                    String(
-                        asset.category ||
-                        ""
-                    ).toLowerCase() ===
+                    String(asset.category || "")
+                        .toLowerCase() ===
                     currentMarketCategory
             );
     }
@@ -882,14 +858,12 @@ function renderMarket() {
             assets.filter(asset => {
 
                 const name =
-                    String(
-                        asset.name || ""
-                    ).toLowerCase();
+                    String(asset.name || "")
+                        .toLowerCase();
 
                 const symbol =
-                    String(
-                        asset.symbol || ""
-                    ).toLowerCase();
+                    String(asset.symbol || "")
+                        .toLowerCase();
 
                 return (
                     name.includes(search) ||
@@ -906,8 +880,7 @@ function renderMarket() {
 
 function filterMarket(category) {
 
-    currentMarketCategory =
-        category;
+    currentMarketCategory = category;
 
     renderMarket();
 }
@@ -924,9 +897,7 @@ function renderMarketOverview(assets) {
         assets.reduce(
             (sum, asset) =>
                 sum +
-                Number(
-                    asset.market_cap || 0
-                ),
+                Number(asset.market_cap || 0),
             0
         );
 
@@ -934,9 +905,7 @@ function renderMarketOverview(assets) {
         assets.reduce(
             (sum, asset) =>
                 sum +
-                Number(
-                    asset.volume || 0
-                ),
+                Number(asset.volume || 0),
             0
         );
 
@@ -952,64 +921,56 @@ function renderMarketOverview(assets) {
 }
 
 
+// ------------------------------------------------------------
+// MOVERS
+// ------------------------------------------------------------
+
+function getAssetChange(asset) {
+
+    const price =
+        Number(asset.price || 0);
+
+    const previous =
+        Number(
+            asset.previous_price ??
+            price
+        );
+
+    if (previous === 0) {
+        return 0;
+    }
+
+    return (
+        (price - previous) /
+        previous
+    ) * 100;
+}
+
+
 function renderMovers(assets) {
 
     const ranked =
         assets
-            .map(asset => {
-
-                const price =
-                    Number(
-                        asset.price || 0
-                    );
-
-                const previous =
-                    Number(
-                        asset.previous_price ||
-                        price
-                    );
-
-                const change =
-                    previous === 0
-                        ? 0
-                        : (
-                            (
-                                price -
-                                previous
-                            ) /
-                            previous
-                        ) *
-                        100;
-
-                return {
-                    ...asset,
-                    change
-                };
-            })
+            .map(asset => ({
+                ...asset,
+                change: getAssetChange(asset)
+            }))
             .sort(
                 (a, b) =>
-                    b.change -
-                    a.change
+                    b.change - a.change
             );
 
     const gainers =
         ranked
-            .filter(
-                asset =>
-                    asset.change > 0
-            )
+            .filter(asset => asset.change > 0)
             .slice(0, 5);
 
     const losers =
         ranked
-            .filter(
-                asset =>
-                    asset.change < 0
-            )
+            .filter(asset => asset.change < 0)
             .sort(
                 (a, b) =>
-                    a.change -
-                    b.change
+                    a.change - b.change
             )
             .slice(0, 5);
 
@@ -1031,9 +992,7 @@ function renderMoverList(
 ) {
 
     const container =
-        document.getElementById(
-            elementId
-        );
+        document.getElementById(elementId);
 
     if (!container) {
         return;
@@ -1051,11 +1010,30 @@ function renderMoverList(
 
     assets.forEach(asset => {
 
+        const change =
+            Number(asset.change || 0);
+
+        const color =
+            getTrendColor(change);
+
+        const colorClass =
+            change > 0
+                ? "positive"
+                : change < 0
+                    ? "negative"
+                    : "neutral";
+
+        const arrow =
+            change > 0
+                ? "▲"
+                : change < 0
+                    ? "▼"
+                    : "—";
+
         const row =
             document.createElement("div");
 
-        row.className =
-            "mover-row";
+        row.className = "mover-row";
 
         row.innerHTML = `
             <div>
@@ -1069,13 +1047,19 @@ function renderMoverList(
             </div>
 
             <div>
-                ${formatMoney(asset.price)}
+                <strong>
+                    ${formatMoney(asset.price)}
+                </strong>
             </div>
 
-            <div>
-                ${formatSignedPercent(
-                    asset.change
-                )}
+            <div
+                class="${colorClass}"
+                style="color:${color};font-weight:800;"
+            >
+                <strong>
+                    ${arrow}
+                    ${formatSignedPercent(change)}
+                </strong>
             </div>
         `;
 
@@ -1089,12 +1073,14 @@ function renderMoverList(
 }
 
 
+// ------------------------------------------------------------
+// MARKET LIST
+// ------------------------------------------------------------
+
 function renderMarketList(assets) {
 
     const container =
-        document.getElementById(
-            "market-list"
-        );
+        document.getElementById("market-list");
 
     if (!container) {
         return;
@@ -1113,33 +1099,32 @@ function renderMarketList(assets) {
     assets.forEach(asset => {
 
         const price =
-            Number(
-                asset.price || 0
-            );
-
-        const previous =
-            Number(
-                asset.previous_price ||
-                price
-            );
+            Number(asset.price || 0);
 
         const change =
-            previous === 0
-                ? 0
-                : (
-                    (
-                        price -
-                        previous
-                    ) /
-                    previous
-                ) *
-                100;
+            getAssetChange(asset);
+
+        const color =
+            getTrendColor(change);
+
+        const colorClass =
+            change > 0
+                ? "positive"
+                : change < 0
+                    ? "negative"
+                    : "neutral";
+
+        const arrow =
+            change > 0
+                ? "▲"
+                : change < 0
+                    ? "▼"
+                    : "—";
 
         const row =
             document.createElement("div");
 
-        row.className =
-            "market-row";
+        row.className = "market-row";
 
         row.innerHTML = `
             <div>
@@ -1156,20 +1141,20 @@ function renderMarketList(assets) {
                 ${formatMoney(price)}
             </div>
 
-            <div>
+            <div
+                class="${colorClass}"
+                style="color:${color};font-weight:800;"
+            >
+                ${arrow}
                 ${formatSignedPercent(change)}
             </div>
 
             <div>
-                ${formatMoney(
-                    asset.market_cap || 0
-                )}
+                ${formatMoney(asset.market_cap || 0)}
             </div>
 
             <div>
-                ${formatNumber(
-                    asset.volume || 0
-                )}
+                ${formatNumber(asset.volume || 0)}
             </div>
         `;
 
@@ -1192,9 +1177,7 @@ document.addEventListener(
     () => {
 
         const marketSearch =
-            document.getElementById(
-                "market-search"
-            );
+            document.getElementById("market-search");
 
         if (marketSearch) {
 
@@ -1230,35 +1213,17 @@ async function loadAssetDetail(assetId) {
 
     if (!asset) {
 
-        alert(
-            "Asset not found."
-        );
+        alert("Asset not found.");
 
         return;
     }
 
-    currentAsset =
-        asset;
+    currentAsset = asset;
 
-    setText(
-        "asset-name",
-        asset.name
-    );
-
-    setText(
-        "asset-symbol",
-        asset.symbol
-    );
-
-    setText(
-        "asset-category",
-        asset.category
-    );
-
-    setText(
-        "asset-category-stat",
-        asset.category
-    );
+    setText("asset-name", asset.name);
+    setText("asset-symbol", asset.symbol);
+    setText("asset-category", asset.category);
+    setText("asset-category-stat", asset.category);
 
     setText(
         "asset-price",
@@ -1272,16 +1237,12 @@ async function loadAssetDetail(assetId) {
 
     setText(
         "asset-market-cap",
-        formatMoney(
-            asset.market_cap || 0
-        )
+        formatMoney(asset.market_cap || 0)
     );
 
     setText(
         "asset-volume",
-        formatNumber(
-            asset.volume || 0
-        )
+        formatNumber(asset.volume || 0)
     );
 
     setText(
@@ -1309,32 +1270,22 @@ async function loadAssetDetail(assetId) {
 
 function updateAssetChange(asset) {
 
-    const price =
-        Number(
-            asset.price || 0
-        );
-
-    const previous =
-        Number(
-            asset.previous_price ||
-            price
-        );
-
     const change =
-        previous === 0
-            ? 0
-            : (
-                (
-                    price -
-                    previous
-                ) /
-                previous
-            ) *
-            100;
+        getAssetChange(asset);
 
-    setText(
-        "asset-change",
-        formatSignedPercent(change)
+    const element =
+        document.getElementById("asset-change");
+
+    if (!element) {
+        return;
+    }
+
+    element.textContent =
+        formatSignedPercent(change);
+
+    applyTrendStyle(
+        element,
+        change
     );
 }
 
@@ -1345,52 +1296,39 @@ function updateAssetChange(asset) {
 
 function setTradeSide(side) {
 
-    currentTradeSide =
-        side;
+    currentTradeSide = side;
 
     const buyTab =
-        document.getElementById(
-            "buy-tab"
-        );
+        document.getElementById("buy-tab");
 
     const sellTab =
-        document.getElementById(
-            "sell-tab"
-        );
+        document.getElementById("sell-tab");
 
     const submit =
-        document.getElementById(
-            "trade-submit"
-        );
+        document.getElementById("trade-submit");
 
     if (side === "buy") {
 
-        buyTab?.classList.add(
-            "active"
-        );
+        buyTab?.classList.add("active");
+        sellTab?.classList.remove("active");
 
-        sellTab?.classList.remove(
-            "active"
-        );
+        submit?.classList.add("buy-mode");
+        submit?.classList.remove("sell-mode");
 
         if (submit) {
-            submit.textContent =
-                "Buy";
+            submit.textContent = "Buy";
         }
 
     } else {
 
-        sellTab?.classList.add(
-            "active"
-        );
+        sellTab?.classList.add("active");
+        buyTab?.classList.remove("active");
 
-        buyTab?.classList.remove(
-            "active"
-        );
+        submit?.classList.add("sell-mode");
+        submit?.classList.remove("buy-mode");
 
         if (submit) {
-            submit.textContent =
-                "Sell";
+            submit.textContent = "Sell";
         }
     }
 
@@ -1402,10 +1340,7 @@ function setTradeSide(side) {
 
 async function loadTradePosition() {
 
-    if (
-        !currentUser ||
-        !currentAsset
-    ) {
+    if (!currentUser || !currentAsset) {
         return;
     }
 
@@ -1430,26 +1365,19 @@ async function loadTradePosition() {
     }
 
     const shares =
-        Number(
-            position?.shares || 0
-        );
+        Number(position?.shares || 0);
 
     const average =
-        Number(
-            position?.average_price || 0
-        );
+        Number(position?.average_price || 0);
 
     const price =
-        Number(
-            currentAsset.price || 0
-        );
+        Number(currentAsset.price || 0);
 
     const value =
         shares * price;
 
     const pnl =
-        shares *
-        (price - average);
+        shares * (price - average);
 
     setText(
         "trade-holdings",
@@ -1474,6 +1402,11 @@ async function loadTradePosition() {
     setText(
         "position-pnl",
         formatSignedMoney(pnl)
+    );
+
+    applyTrendStyle(
+        document.getElementById("position-pnl"),
+        pnl
     );
 
     await refreshTradeBalance();
@@ -1510,9 +1443,7 @@ async function refreshTradeBalance() {
 
     setText(
         "trade-balance",
-        formatMoney(
-            profile?.balance || 0
-        )
+        formatMoney(profile?.balance || 0)
     );
 }
 
@@ -1524,22 +1455,16 @@ function updateTradePreview() {
     }
 
     const sharesInput =
-        document.getElementById(
-            "trade-shares"
-        );
+        document.getElementById("trade-shares");
 
     const shares =
         Math.max(
             0,
-            Number(
-                sharesInput?.value || 0
-            )
+            Number(sharesInput?.value || 0)
         );
 
     const price =
-        Number(
-            currentAsset.price || 0
-        );
+        Number(currentAsset.price || 0);
 
     const total =
         shares * price;
@@ -1583,14 +1508,10 @@ async function submitTrade() {
     }
 
     const input =
-        document.getElementById(
-            "trade-shares"
-        );
+        document.getElementById("trade-shares");
 
     const shares =
-        Number(
-            input?.value || 0
-        );
+        Number(input?.value || 0);
 
     if (
         !Number.isInteger(shares) ||
@@ -1606,9 +1527,7 @@ async function submitTrade() {
     }
 
     const price =
-        Number(
-            currentAsset.price || 0
-        );
+        Number(currentAsset.price || 0);
 
     const total =
         shares * price;
@@ -1630,16 +1549,12 @@ async function submitTrade() {
     }
 
     const submit =
-        document.getElementById(
-            "trade-submit"
-        );
+        document.getElementById("trade-submit");
 
     if (submit) {
 
         submit.disabled = true;
-
-        submit.textContent =
-            "Processing...";
+        submit.textContent = "Processing...";
     }
 
     clearTradeMessage();
@@ -1652,14 +1567,9 @@ async function submitTrade() {
         } = await supabaseClient.rpc(
             "execute_trade",
             {
-                p_asset_id:
-                    currentAsset.id,
-
-                p_side:
-                    currentTradeSide,
-
-                p_shares:
-                    shares
+                p_asset_id: currentAsset.id,
+                p_side: currentTradeSide,
+                p_shares: shares
             }
         );
 
@@ -1667,10 +1577,7 @@ async function submitTrade() {
             throw error;
         }
 
-        console.log(
-            "Trade result:",
-            data
-        );
+        console.log("Trade result:", data);
 
         showTradeMessage(
             `${action === "buy" ? "Bought" : "Sold"} ${shares} share${shares === 1 ? "" : "s"} successfully.`,
@@ -1682,9 +1589,7 @@ async function submitTrade() {
         }
 
         await refreshCurrentAsset();
-
         await loadTradePosition();
-
         await loadDashboardDataOnly();
 
     } catch (error) {
@@ -1708,7 +1613,7 @@ async function submitTrade() {
         ) {
 
             message =
-                "Not enough cash for this trade.";
+                "Not enough paper balance for this trade.";
 
         } else if (
             lowerMessage.includes(
@@ -1778,8 +1683,7 @@ async function refreshCurrentAsset() {
         return;
     }
 
-    currentAsset =
-        asset;
+    currentAsset = asset;
 
     setText(
         "asset-price",
@@ -1793,20 +1697,15 @@ async function refreshCurrentAsset() {
 
     setText(
         "asset-market-cap",
-        formatMoney(
-            asset.market_cap || 0
-        )
+        formatMoney(asset.market_cap || 0)
     );
 
     setText(
         "asset-volume",
-        formatNumber(
-            asset.volume || 0
-        )
+        formatNumber(asset.volume || 0)
     );
 
     updateAssetChange(asset);
-
     updateTradePreview();
 
     if (
@@ -1842,14 +1741,11 @@ async function loadDashboardDataOnly() {
         return;
     }
 
-    currentProfile =
-        profile;
+    currentProfile = profile;
 
     setText(
         "balance",
-        formatMoney(
-            profile.balance || 0
-        )
+        formatMoney(profile.balance || 0)
     );
 
     const portfolioValue =
@@ -1857,16 +1753,17 @@ async function loadDashboardDataOnly() {
 
     setText(
         "portfolio",
-        formatMoney(
-            portfolioValue.value
-        )
+        formatMoney(portfolioValue.value)
     );
 
     setText(
         "pnl",
-        formatSignedMoney(
-            portfolioValue.pnl
-        )
+        formatSignedMoney(portfolioValue.pnl)
+    );
+
+    applyTrendStyle(
+        document.getElementById("pnl"),
+        portfolioValue.pnl
     );
 }
 
@@ -1881,16 +1778,13 @@ function showTradeMessage(
 ) {
 
     const element =
-        document.getElementById(
-            "trade-message"
-        );
+        document.getElementById("trade-message");
 
     if (!element) {
         return;
     }
 
-    element.textContent =
-        message;
+    element.textContent = message;
 
     element.classList.toggle(
         "negative",
@@ -1901,15 +1795,18 @@ function showTradeMessage(
         "positive",
         !isError
     );
+
+    element.style.color =
+        isError
+            ? "#ef4444"
+            : "#22c55e";
 }
 
 
 function clearTradeMessage() {
 
     const element =
-        document.getElementById(
-            "trade-message"
-        );
+        document.getElementById("trade-message");
 
     if (element) {
 
@@ -1919,6 +1816,8 @@ function clearTradeMessage() {
             "negative",
             "positive"
         );
+
+        element.style.color = "";
     }
 }
 
@@ -1930,15 +1829,21 @@ function clearTradeMessage() {
 async function loadChart() {
 
     const container =
-        document.getElementById(
-            "price-chart"
-        );
+        document.getElementById("price-chart");
 
-    if (
-        !container ||
-        !currentAsset
-    ) {
+    if (!container || !currentAsset) {
         return;
+    }
+
+    if (chartResizeObserver) {
+
+        try {
+            chartResizeObserver.disconnect();
+        } catch (error) {
+            console.warn(error);
+        }
+
+        chartResizeObserver = null;
     }
 
     if (chart) {
@@ -1974,8 +1879,7 @@ async function loadChart() {
             container,
             {
                 width:
-                    container.clientWidth ||
-                    700,
+                    container.clientWidth || 700,
 
                 height: 420,
 
@@ -1984,19 +1888,18 @@ async function loadChart() {
                         color: "transparent"
                     },
 
-                    textColor:
-                        "#9ca3af"
+                    textColor: "#9ca3af"
                 },
 
                 grid: {
                     vertLines: {
                         color:
-                            "rgba(128,128,128,0.15)"
+                            "rgba(128,128,128,0.12)"
                     },
 
                     horzLines: {
                         color:
-                            "rgba(128,128,128,0.15)"
+                            "rgba(128,128,128,0.12)"
                     }
                 },
 
@@ -2007,7 +1910,28 @@ async function loadChart() {
 
                 timeScale: {
                     borderColor:
-                        "rgba(128,128,128,0.25)"
+                        "rgba(128,128,128,0.25)",
+
+                    timeVisible: true,
+
+                    secondsVisible: false
+                },
+
+                crosshair: {
+                    mode: 1
+                },
+
+                handleScroll: {
+                    mouseWheel: true,
+                    pressedMouseMove: true,
+                    horzTouchDrag: true,
+                    vertTouchDrag: true
+                },
+
+                handleScale: {
+                    axisPressedMouseMove: true,
+                    mouseWheel: true,
+                    pinch: true
                 }
             }
         );
@@ -2016,20 +1940,33 @@ async function loadChart() {
         chart.addSeries(
             LightweightCharts.CandlestickSeries,
             {
-                upColor: "#16a34a",
-                downColor: "#dc2626",
-                borderUpColor: "#16a34a",
-                borderDownColor: "#dc2626",
-                wickUpColor: "#16a34a",
-                wickDownColor: "#dc2626"
+                upColor: "#22c55e",
+                downColor: "#ef4444",
+
+                borderUpColor: "#22c55e",
+                borderDownColor: "#ef4444",
+
+                wickUpColor: "#22c55e",
+                wickDownColor: "#ef4444",
+
+                priceFormat: {
+                    type: "price",
+                    precision: 2,
+                    minMove: 0.01
+                },
+
+                lastValueVisible: true,
+                priceLineVisible: true
             }
         );
 
     await loadChartData();
 
+    ensureChartPeriodControls();
+
     if (typeof ResizeObserver !== "undefined") {
 
-        const resizeObserver =
+        chartResizeObserver =
             new ResizeObserver(
                 entries => {
 
@@ -2049,19 +1986,18 @@ async function loadChart() {
                 }
             );
 
-        resizeObserver.observe(
-            container
-        );
+        chartResizeObserver.observe(container);
     }
 }
 
 
+// ------------------------------------------------------------
+// CHART DATA
+// ------------------------------------------------------------
+
 async function loadChartData() {
 
-    if (
-        !currentAsset ||
-        !candleSeries
-    ) {
+    if (!currentAsset || !candleSeries) {
         return;
     }
 
@@ -2070,26 +2006,34 @@ async function loadChartData() {
             currentChartPeriod
         );
 
+    let query =
+        supabaseClient
+            .from("PriceHistory")
+            .select("*")
+            .eq(
+                "asset_id",
+                currentAsset.id
+            )
+            .order(
+                "recorded_at",
+                {
+                    ascending: true
+                }
+            );
+
+    if (currentChartPeriod !== "ALL") {
+
+        query =
+            query.gte(
+                "recorded_at",
+                periodStart.toISOString()
+            );
+    }
+
     const {
         data: history,
         error
-    } = await supabaseClient
-        .from("PriceHistory")
-        .select("*")
-        .eq(
-            "asset_id",
-            currentAsset.id
-        )
-        .gte(
-            "recorded_at",
-            periodStart.toISOString()
-        )
-        .order(
-            "recorded_at",
-            {
-                ascending: true
-            }
-        );
+    } = await query;
 
     if (error) {
 
@@ -2098,96 +2042,152 @@ async function loadChartData() {
             error
         );
 
-        return;
-    }
-
-    if (
-        !history ||
-        history.length === 0
-    ) {
-
-        candleSeries.setData([]);
+        showChartMessage(
+            "Could not load price history."
+        );
 
         return;
     }
 
     const candles =
         buildCandles(
-            history
+            history || []
         );
 
-    candleSeries.setData(
-        candles
-    );
+    if (!candles.length) {
+
+        candleSeries.setData([]);
+
+        showChartMessage(
+            "Not enough real market history yet."
+        );
+
+        return;
+    }
+
+    hideChartMessage();
+
+    candleSeries.setData(candles);
 
     if (chart) {
+
         chart.timeScale().fitContent();
     }
 }
 
 
 // ------------------------------------------------------------
-// BUILD CANDLES
+// REAL CANDLES
 // ------------------------------------------------------------
 
 function buildCandles(history) {
 
+    const rows =
+        [...history]
+            .sort(
+                (a, b) =>
+                    new Date(a.recorded_at).getTime() -
+                    new Date(b.recorded_at).getTime()
+            );
+
     const candles = [];
 
-    history.forEach(row => {
+    let previousTime = 0;
+    let previousClose = null;
 
-        const time =
+    rows.forEach(row => {
+
+        const timestamp =
+            new Date(
+                row.recorded_at
+            ).getTime();
+
+        if (!Number.isFinite(timestamp)) {
+            return;
+        }
+
+        let time =
             Math.floor(
-                new Date(
-                    row.recorded_at
-                ).getTime() /
-                1000
+                timestamp / 1000
             );
+
+        /*
+         * Lightweight Charts requires strictly increasing
+         * timestamps.
+         */
+        if (time <= previousTime) {
+            time = previousTime + 1;
+        }
 
         const close =
             Number(
                 row.close_price ??
-                row.price ??
-                0
-            );
-
-        const open =
-            Number(
-                row.open_price ??
-                close
-            );
-
-        const high =
-            Number(
-                row.high_price ??
-                Math.max(
-                    open,
-                    close
-                )
-            );
-
-        const low =
-            Number(
-                row.low_price ??
-                Math.min(
-                    open,
-                    close
-                )
+                row.price
             );
 
         if (
-            Number.isFinite(time) &&
-            close > 0
+            !Number.isFinite(close) ||
+            close <= 0
         ) {
-
-            candles.push({
-                time,
-                open,
-                high,
-                low,
-                close
-            });
+            return;
         }
+
+        let open =
+            Number(row.open_price);
+
+        let high =
+            Number(row.high_price);
+
+        let low =
+            Number(row.low_price);
+
+        const hasValidOHLC =
+            Number.isFinite(open) &&
+            Number.isFinite(high) &&
+            Number.isFinite(low) &&
+            open > 0 &&
+            high >= Math.max(open, close) &&
+            low <= Math.min(open, close) &&
+            high >= low;
+
+        /*
+         * If OHLC exists, use the actual stored values.
+         */
+        if (!hasValidOHLC) {
+
+            /*
+             * For old rows that only contain `price`, the
+             * candle is based entirely on actual sequential
+             * prices. No random/fake volatility is introduced.
+             */
+            open =
+                previousClose !== null
+                    ? previousClose
+                    : close;
+
+            high =
+                Math.max(
+                    open,
+                    close
+                );
+
+            low =
+                Math.min(
+                    open,
+                    close
+                );
+        }
+
+        candles.push({
+            time,
+            open,
+            high,
+            low,
+            close
+        });
+
+        previousTime = time;
+        previousClose = close;
     });
 
     return candles;
@@ -2195,34 +2195,108 @@ function buildCandles(history) {
 
 
 // ------------------------------------------------------------
-// CHART PERIOD
+// CHART PERIOD CONTROLS
 // ------------------------------------------------------------
+
+function ensureChartPeriodControls() {
+
+    const chartContainer =
+        document.getElementById("price-chart");
+
+    if (!chartContainer) {
+        return;
+    }
+
+    let controls =
+        document.getElementById(
+            "mkm-chart-period-controls"
+        );
+
+    if (!controls) {
+
+        controls =
+            document.createElement("div");
+
+        controls.id =
+            "mkm-chart-period-controls";
+
+        controls.className =
+            "chart-periods";
+
+        controls.style.display = "flex";
+        controls.style.flexWrap = "wrap";
+        controls.style.gap = "8px";
+        controls.style.marginTop = "14px";
+        controls.style.paddingTop = "10px";
+        controls.style.borderTop =
+            "1px solid rgba(128,128,128,0.15)";
+        controls.style.justifyContent =
+            "center";
+
+        const periods = [
+            "1D",
+            "7D",
+            "30D",
+            "90D",
+            "1Y",
+            "ALL"
+        ];
+
+        periods.forEach(period => {
+
+            const button =
+                document.createElement("button");
+
+            button.type = "button";
+            button.textContent = period;
+
+            button.dataset.period =
+                period;
+
+            button.style.cursor =
+                "pointer";
+
+            button.addEventListener(
+                "click",
+                () => setChartPeriod(period)
+            );
+
+            controls.appendChild(button);
+        });
+
+        chartContainer.appendChild(
+            controls
+        );
+    }
+
+    controls
+        .querySelectorAll("button")
+        .forEach(button => {
+
+            const active =
+                button.dataset.period ===
+                currentChartPeriod;
+
+            button.classList.toggle(
+                "active",
+                active
+            );
+
+            button.style.fontWeight =
+                active ? "800" : "600";
+
+            button.style.opacity =
+                active ? "1" : "0.7";
+        });
+}
+
 
 function setChartPeriod(period) {
 
     currentChartPeriod =
         period;
 
-    document
-        .querySelectorAll(
-            ".chart-periods button"
-        )
-        .forEach(button => {
-
-            button.classList.remove(
-                "active"
-            );
-
-            if (
-                button.textContent
-                    .trim() === period
-            ) {
-
-                button.classList.add(
-                    "active"
-                );
-            }
-        });
+    ensureChartPeriodControls();
 
     loadChartData();
 }
@@ -2246,7 +2320,7 @@ function getChartStartDate(period) {
 
             break;
 
-        case "1W":
+        case "7D":
 
             start.setDate(
                 now.getDate() - 7
@@ -2254,18 +2328,18 @@ function getChartStartDate(period) {
 
             break;
 
-        case "1M":
+        case "30D":
 
-            start.setMonth(
-                now.getMonth() - 1
+            start.setDate(
+                now.getDate() - 30
             );
 
             break;
 
-        case "3M":
+        case "90D":
 
-            start.setMonth(
-                now.getMonth() - 3
+            start.setDate(
+                now.getDate() - 90
             );
 
             break;
@@ -2278,14 +2352,72 @@ function getChartStartDate(period) {
 
             break;
 
+        case "ALL":
+
         default:
 
             start.setFullYear(
                 now.getFullYear() - 10
             );
+
+            break;
     }
 
     return start;
+}
+
+
+function showChartMessage(message) {
+
+    const chartContainer =
+        document.getElementById("price-chart");
+
+    if (!chartContainer) {
+        return;
+    }
+
+    let messageElement =
+        document.getElementById(
+            "mkm-chart-message"
+        );
+
+    if (!messageElement) {
+
+        messageElement =
+            document.createElement("div");
+
+        messageElement.id =
+            "mkm-chart-message";
+
+        messageElement.style.textAlign =
+            "center";
+
+        messageElement.style.padding =
+            "30px 15px";
+
+        messageElement.style.color =
+            "#94a3b8";
+
+        chartContainer.appendChild(
+            messageElement
+        );
+    }
+
+    messageElement.textContent =
+        message;
+}
+
+
+function hideChartMessage() {
+
+    const messageElement =
+        document.getElementById(
+            "mkm-chart-message"
+        );
+
+    if (messageElement) {
+        messageElement.remove();
+    }
 }
 
 
@@ -2297,8 +2429,7 @@ async function loadAdminPanel() {
 
     if (
         !currentUser ||
-        currentUser.id !==
-        MKM_OWNER_ID
+        currentUser.id !== MKM_OWNER_ID
     ) {
 
         alert(
@@ -2309,7 +2440,6 @@ async function loadAdminPanel() {
     }
 
     await loadAdminAssets();
-
     await loadMarketSettings();
 
     showPage("admin");
@@ -2355,16 +2485,12 @@ async function loadAdminAssets() {
     (assets || []).forEach(asset => {
 
         totalMarketCap +=
-            Number(
-                asset.market_cap || 0
-            );
+            Number(asset.market_cap || 0);
 
         if (list) {
 
             const row =
-                document.createElement(
-                    "div"
-                );
+                document.createElement("div");
 
             row.className =
                 "admin-company-row";
@@ -2385,9 +2511,7 @@ async function loadAdminAssets() {
                 </div>
 
                 <div>
-                    ${formatMoney(
-                        asset.market_cap || 0
-                    )}
+                    ${formatMoney(asset.market_cap || 0)}
                 </div>
             `;
 
@@ -2397,9 +2521,7 @@ async function loadAdminAssets() {
         if (eventAsset) {
 
             const option =
-                document.createElement(
-                    "option"
-                );
+                document.createElement("option");
 
             option.value =
                 asset.id;
@@ -2407,9 +2529,7 @@ async function loadAdminAssets() {
             option.textContent =
                 `${asset.symbol} — ${asset.name}`;
 
-            eventAsset.appendChild(
-                option
-            );
+            eventAsset.appendChild(option);
         }
     });
 
@@ -2420,9 +2540,7 @@ async function loadAdminAssets() {
 
     setText(
         "admin-market-cap",
-        formatMoney(
-            totalMarketCap
-        )
+        formatMoney(totalMarketCap)
     );
 }
 
@@ -2455,7 +2573,6 @@ document.addEventListener(
                     currentUser.id !==
                     MKM_OWNER_ID
                 ) {
-
                     return;
                 }
 
@@ -2532,8 +2649,7 @@ document.addEventListener(
                             market_cap:
                                 price * shares,
                             volume: 0,
-                            description:
-                                ""
+                            description: ""
                         })
                         .select()
                         .single();
@@ -2544,6 +2660,7 @@ document.addEventListener(
 
                     await recordPriceHistory(
                         data.id,
+                        price,
                         price
                     );
 
@@ -2633,8 +2750,7 @@ async function saveMarketSettings() {
 
     if (
         !currentUser ||
-        currentUser.id !==
-        MKM_OWNER_ID
+        currentUser.id !== MKM_OWNER_ID
     ) {
         return;
     }
@@ -2710,6 +2826,8 @@ async function saveMarketSettings() {
         message.textContent =
             "Market settings saved.";
     }
+
+    await startMarketTimer();
 }
 
 
@@ -2721,8 +2839,7 @@ async function createMarketEvent() {
 
     if (
         !currentUser ||
-        currentUser.id !==
-        MKM_OWNER_ID
+        currentUser.id !== MKM_OWNER_ID
     ) {
         return;
     }
@@ -2774,8 +2891,7 @@ async function createMarketEvent() {
         new Date(
             Date.now() +
             duration * 60 * 1000
-        )
-        .toISOString();
+        ).toISOString();
 
     const {
         error
@@ -2823,10 +2939,41 @@ async function recordPriceHistory(
     const close =
         Number(price);
 
+    if (
+        !Number.isFinite(close) ||
+        close <= 0
+    ) {
+        return;
+    }
+
     const previous =
         previousPrice === null
             ? close
             : Number(previousPrice);
+
+    const open =
+        Number.isFinite(previous) &&
+        previous > 0
+            ? previous
+            : close;
+
+    /*
+     * These are NOT invented volatility values.
+     *
+     * The high/low are simply the actual range between
+     * the opening and closing prices for this market update.
+     */
+    const high =
+        Math.max(
+            open,
+            close
+        );
+
+    const low =
+        Math.min(
+            open,
+            close
+        );
 
     const {
         error
@@ -2835,17 +2982,9 @@ async function recordPriceHistory(
         .insert({
             asset_id: assetId,
             price: close,
-            open_price: previous,
-            high_price:
-                Math.max(
-                    previous,
-                    close
-                ),
-            low_price:
-                Math.min(
-                    previous,
-                    close
-                ),
+            open_price: open,
+            high_price: high,
+            low_price: low,
             close_price: close,
             recorded_at:
                 new Date().toISOString()
@@ -2906,9 +3045,7 @@ async function runMarketSimulation() {
         if (
             document
                 .getElementById("market")
-                ?.classList.contains(
-                    "hidden"
-                ) === false
+                ?.classList.contains("hidden") === false
         ) {
 
             await loadMarket();
@@ -2981,24 +3118,15 @@ async function simulateAssetMovement(
 
         let multiplier = 1;
 
-        if (
-            event.strength ===
-            "low"
-        ) {
+        if (event.strength === "low") {
 
             multiplier = 1.5;
 
-        } else if (
-            event.strength ===
-            "medium"
-        ) {
+        } else if (event.strength === "medium") {
 
             multiplier = 2.5;
 
-        } else if (
-            event.strength ===
-            "high"
-        ) {
+        } else if (event.strength === "high") {
 
             multiplier = 4;
         }
@@ -3007,8 +3135,7 @@ async function simulateAssetMovement(
             Math.abs(movement) *
             multiplier *
             (
-                event.direction ===
-                "up"
+                event.direction === "up"
                     ? 1
                     : -1
             );
@@ -3069,6 +3196,8 @@ async function startMarketTimer() {
         clearInterval(
             marketTimer
         );
+
+        marketTimer = null;
     }
 
     const {
@@ -3090,9 +3219,7 @@ async function startMarketTimer() {
     marketTimer =
         setInterval(
             runMarketSimulation,
-            minutes *
-            60 *
-            1000
+            minutes * 60 * 1000
         );
 }
 
@@ -3133,9 +3260,7 @@ async function loadNews() {
     }
 
     const container =
-        document.getElementById(
-            "news-list"
-        );
+        document.getElementById("news-list");
 
     if (!container) {
         return;
@@ -3156,37 +3281,29 @@ async function loadNews() {
     news.forEach(article => {
 
         const card =
-            document.createElement(
-                "div"
-            );
+            document.createElement("div");
 
-        card.className =
-            "card";
+        card.className = "card";
 
         card.innerHTML = `
             <h2>
-                ${escapeHTML(
-                    article.headline
-                )}
+                ${escapeHTML(article.headline)}
             </h2>
 
             <p>
-                ${escapeHTML(
-                    article.content
-                )}
+                ${escapeHTML(article.content)}
             </p>
 
             <small>
-                ${article.Assets
-                    ? escapeHTML(
-                        article.Assets.symbol
-                    )
-                    : "MKM HQ"
+                ${
+                    article.Assets
+                        ? escapeHTML(
+                            article.Assets.symbol
+                        )
+                        : "MKM HQ"
                 }
                 ·
-                ${formatDateTime(
-                    article.created_at
-                )}
+                ${formatDateTime(article.created_at)}
             </small>
         `;
 
@@ -3293,6 +3410,19 @@ document.addEventListener(
                 }
             );
         }
+
+        /*
+         * Trade preview updates immediately while typing.
+         */
+        const tradeShares =
+            document.getElementById(
+                "trade-shares"
+            );
+
+        tradeShares?.addEventListener(
+            "input",
+            updateTradePreview
+        );
     }
 );
 
@@ -3315,6 +3445,68 @@ function setText(
         element.textContent =
             value;
     }
+}
+
+
+function getTrendColor(value) {
+
+    const number =
+        Number(value || 0);
+
+    if (number > 0) {
+        return "#22c55e";
+    }
+
+    if (number < 0) {
+        return "#ef4444";
+    }
+
+    return "#94a3b8";
+}
+
+
+function applyTrendStyle(
+    element,
+    value
+) {
+
+    if (!element) {
+        return;
+    }
+
+    const number =
+        Number(value || 0);
+
+    element.classList.remove(
+        "positive",
+        "negative",
+        "neutral"
+    );
+
+    if (number > 0) {
+
+        element.classList.add(
+            "positive"
+        );
+
+    } else if (number < 0) {
+
+        element.classList.add(
+            "negative"
+        );
+
+    } else {
+
+        element.classList.add(
+            "neutral"
+        );
+    }
+
+    element.style.color =
+        getTrendColor(number);
+
+    element.style.fontWeight =
+        "700";
 }
 
 
@@ -3343,7 +3535,6 @@ function formatSignedMoney(value) {
     if (number > 0) {
 
         return `+${formatMoney(number)}`;
-
     }
 
     return formatMoney(number);
@@ -3440,29 +3631,12 @@ function formatDateTime(value) {
 
 function escapeHTML(value) {
 
-    return String(
-        value ?? ""
-    )
-    .replace(
-        /&/g,
-        "&amp;"
-    )
-    .replace(
-        /</g,
-        "&lt;"
-    )
-    .replace(
-        />/g,
-        "&gt;"
-    )
-    .replace(
-        /"/g,
-        "&quot;"
-    )
-    .replace(
-        /'/g,
-        "&#039;"
-    );
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 
@@ -3477,7 +3651,5 @@ document.addEventListener(
         await checkSession();
 
         await startMarketTimer();
-
     }
 );
-

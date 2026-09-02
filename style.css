@@ -1412,3 +1412,71 @@ textarea {
         gap: 4px;
     }
 }
+
+/* =========================================================
+   MARKET COLORS
+   ========================================================= */
+
+.positive,
+.gain,
+.gainer,
+.price-up,
+.change-up,
+.up,
+.buy {
+    color: #55d67a !important;
+}
+
+.negative,
+.loss,
+.loser,
+.price-down,
+.change-down,
+.down,
+.sell {
+    color: #ef6b73 !important;
+}
+
+#asset-change.positive,
+#asset-change.gain,
+#asset-change.price-up {
+    color: #55d67a !important;
+}
+
+#asset-change.negative,
+#asset-change.loss,
+#asset-change.price-down {
+    color: #ef6b73 !important;
+}
+
+/* Make positive/negative market rows feel alive */
+.positive-bg {
+    background: rgba(85, 214, 122, 0.08);
+}
+
+.negative-bg {
+    background: rgba(239, 107, 115, 0.08);
+}
+
+/* Trading buttons */
+#buy-tab.active {
+    color: #55d67a;
+    border-color: rgba(85, 214, 122, 0.45);
+    background: rgba(85, 214, 122, 0.08);
+}
+
+#sell-tab.active {
+    color: #ef6b73;
+    border-color: rgba(239, 107, 115, 0.45);
+    background: rgba(239, 107, 115, 0.08);
+}
+
+#trade-submit.buy-mode {
+    color: #55d67a;
+    border-color: rgba(85, 214, 122, 0.35);
+}
+
+#trade-submit.sell-mode {
+    color: #ef6b73;
+    border-color: rgba(239, 107, 115, 0.35);
+}
