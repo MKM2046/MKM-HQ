@@ -4,7 +4,6 @@
 
 body {
     margin: 0;
-
     min-height: 100vh;
 
     background:
@@ -39,7 +38,7 @@ body {
 }
 
 .hidden {
-    display: none;
+    display: none !important;
 }
 
 
@@ -433,8 +432,8 @@ form button {
     .dashboard {
         padding: 15px;
     }
-
 }
+
 
 /* ============================= */
 /* MARKET PAGE */
@@ -442,14 +441,19 @@ form button {
 
 .market-page {
     width: 100%;
+
     max-width: 1150px;
+
     padding: 30px;
 }
 
 .market-header {
     display: flex;
+
     align-items: center;
+
     justify-content: space-between;
+
     margin-bottom: 45px;
 }
 
@@ -459,26 +463,35 @@ form button {
 
 .market-search input {
     font-size: 16px;
+
     padding: 17px;
 }
 
 .market-categories {
     display: flex;
+
     gap: 8px;
+
     margin-bottom: 40px;
+
     overflow-x: auto;
 }
 
 .category {
     background: #101114;
+
     color: #888;
+
     border: 1px solid #24262b;
+
     padding: 10px 17px;
 }
 
 .category.active {
     background: white;
+
     color: black;
+
     border-color: white;
 }
 
@@ -497,21 +510,30 @@ form button {
 
 .overview-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+
+    grid-template-columns:
+        repeat(3, 1fr);
+
     gap: 12px;
 }
 
 .overview-card {
     background: #101114;
+
     border: 1px solid #24262b;
+
     border-radius: 12px;
+
     padding: 22px;
 }
 
 .overview-card span {
     display: block;
+
     color: #777;
+
     font-size: 13px;
+
     margin-bottom: 10px;
 }
 
@@ -521,47 +543,81 @@ form button {
 
 .market-columns {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+
+    grid-template-columns:
+        1fr 1fr;
+
     gap: 12px;
 }
 
 .market-box {
     background: #101114;
+
     border: 1px solid #24262b;
+
     border-radius: 12px;
+
     padding: 22px;
 }
 
 .box-header h2 {
     margin-top: 0;
+
     font-size: 18px;
 }
 
-.mover {
+
+/* ============================= */
+/* MARKET MOVERS */
+/* ============================= */
+
+.mover-row {
     display: flex;
+
     align-items: center;
+
     justify-content: space-between;
+
+    gap: 20px;
+
     padding: 15px 0;
+
     border-top: 1px solid #1d1f23;
+
+    cursor: pointer;
 }
 
-.mover div:first-child {
+.mover-row > div:first-child {
     display: flex;
+
     flex-direction: column;
+
     gap: 4px;
+
+    min-width: 0;
 }
 
-.mover span {
+.mover-row > div:first-child span {
     color: #777;
+
     font-size: 12px;
+
+    white-space: nowrap;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
 }
 
-.mover-right {
+.mover-row > div:last-child {
     text-align: right;
+
+    flex-shrink: 0;
 }
 
-.mover-right strong {
+.mover-row > div:last-child strong {
     display: block;
+
     margin-bottom: 4px;
 }
 
@@ -573,50 +629,87 @@ form button {
     color: #e47d7d !important;
 }
 
+
+/* ============================= */
+/* FULL MARKET LIST */
+/* ============================= */
+
 .full-market-list {
     background: #101114;
+
     border: 1px solid #24262b;
+
     border-radius: 12px;
+
     overflow: hidden;
 }
 
-.asset-row {
+
+/*
+   IMPORTANT:
+   app.js creates .market-row,
+   not .asset-row.
+*/
+
+.market-row {
     display: grid;
-    grid-template-columns: 1fr 180px 150px;
+
+    grid-template-columns:
+        minmax(220px, 1.8fr)
+        130px
+        110px
+        150px
+        130px;
+
     align-items: center;
+
     gap: 20px;
-    padding: 20px 22px;
+
+    padding: 18px 22px;
+
     border-bottom: 1px solid #1d1f23;
+
+    cursor: pointer;
+
+    transition: background 0.15s;
 }
 
-.asset-row:last-child {
+.market-row:last-child {
     border-bottom: none;
 }
 
-.asset-name {
+.market-row:hover {
+    background: #15171b;
+}
+
+.market-name {
     display: flex;
+
     flex-direction: column;
+
     gap: 5px;
+
+    min-width: 0;
 }
 
-.asset-name span,
-.asset-category {
+.market-name strong {
+    font-size: 15px;
+}
+
+.market-name span {
     color: #777;
+
     font-size: 13px;
+
+    white-space: nowrap;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
 }
 
-.asset-price {
-    text-align: right;
-}
-
-.asset-price strong {
-    display: block;
-    margin-bottom: 5px;
-}
-
-.empty-market {
-    color: #777;
-    padding: 15px 0;
+.market-row > div:not(.market-name) {
+    white-space: nowrap;
 }
 
 
@@ -638,15 +731,26 @@ form button {
         grid-template-columns: 1fr;
     }
 
-    .asset-row {
-        grid-template-columns: 1fr auto;
+    .market-row {
+        grid-template-columns:
+            1fr auto;
+
+        gap: 10px;
+
+        padding: 16px;
     }
 
-    .asset-category {
+    .market-row > div:nth-child(3),
+    .market-row > div:nth-child(4),
+    .market-row > div:nth-child(5) {
         display: none;
     }
 
+    .market-name {
+        min-width: 0;
+    }
 }
+
 
 /* ============================= */
 /* ASSET DETAIL PAGE */
@@ -654,7 +758,9 @@ form button {
 
 .asset-page {
     width: 100%;
+
     max-width: 1150px;
+
     padding: 30px;
 }
 
@@ -664,21 +770,29 @@ form button {
 
 .asset-header {
     display: flex;
+
     align-items: flex-end;
+
     justify-content: space-between;
+
     gap: 30px;
+
     margin-bottom: 35px;
 }
 
 .asset-header h1 {
     margin: 6px 0 4px;
+
     font-size: 42px;
 }
 
 .asset-symbol {
     margin: 0;
+
     color: #777;
+
     font-family: monospace;
+
     letter-spacing: 2px;
 }
 
@@ -688,7 +802,9 @@ form button {
 
 .asset-current-price strong {
     display: block;
+
     font-size: 32px;
+
     margin-bottom: 6px;
 }
 
@@ -698,85 +814,143 @@ form button {
 
 .chart-panel {
     background: #101114;
+
     border: 1px solid #24262b;
+
     border-radius: 12px;
+
     padding: 25px;
 }
 
 .chart-header {
     display: flex;
+
     align-items: center;
+
     justify-content: space-between;
+
     gap: 20px;
+
     margin-bottom: 25px;
 }
 
 .chart-header h2 {
     margin: 5px 0 0;
+
     font-size: 19px;
 }
 
 .chart-periods {
     display: flex;
+
     gap: 5px;
 }
 
 .period {
     padding: 8px 12px;
+
     background: transparent;
+
     color: #777;
+
     border: 1px solid transparent;
+
     font-size: 12px;
 }
 
 .period:hover {
     transform: none;
+
     opacity: 1;
+
     color: white;
 }
 
 .period.active {
     background: #1b1d21;
+
     color: white;
+
     border-color: #303238;
 }
 
-.price-chart {
+
+/* ============================= */
+/* PRICE CHART */
+/* ============================= */
+
+#price-chart {
     width: 100%;
-    height: 380px;
-    position: relative;
+
+    height: 420px;
+
+    min-height: 420px;
+
+    background: #080808;
+
+    border-radius: 12px;
+
     overflow: hidden;
-    border-top: 1px solid #1d1f23;
-    border-bottom: 1px solid #1d1f23;
+
+    position: relative;
 }
 
+.chart-loading,
 .chart-placeholder {
+    width: 100%;
+
     height: 100%;
+
+    min-height: 420px;
+
     display: flex;
+
     align-items: center;
+
     justify-content: center;
-    color: #555;
-    font-size: 14px;
+
+    color: #777;
+
+    background: #080808;
 }
+
+#price-chart canvas {
+    display: block;
+}
+
+
+/* ============================= */
+/* ASSET STATS */
+/* ============================= */
 
 .asset-stats {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+
+    grid-template-columns:
+        repeat(3, 1fr);
+
     gap: 12px;
+
     margin-top: 15px;
 }
 
 .asset-stat {
     padding: 22px;
+
     background: #101114;
+
     border: 1px solid #24262b;
+
     border-radius: 12px;
 }
 
 .asset-stat span {
     display: block;
+
     color: #777;
+
     font-size: 13px;
+
     margin-bottom: 10px;
 }
 
@@ -784,11 +958,20 @@ form button {
     font-size: 18px;
 }
 
+
+/* ============================= */
+/* ASSET ABOUT */
+/* ============================= */
+
 .asset-about {
     margin-top: 15px;
+
     padding: 25px;
+
     background: #101114;
+
     border: 1px solid #24262b;
+
     border-radius: 12px;
 }
 
@@ -798,9 +981,12 @@ form button {
 
 .asset-about p:last-child {
     color: #85878d;
+
     line-height: 1.7;
+
     max-width: 800px;
 }
+
 
 @media (max-width: 700px) {
 
@@ -810,6 +996,7 @@ form button {
 
     .asset-header {
         align-items: flex-start;
+
         flex-direction: column;
     }
 
@@ -823,6 +1010,7 @@ form button {
 
     .chart-header {
         align-items: flex-start;
+
         flex-direction: column;
     }
 
@@ -834,85 +1022,22 @@ form button {
         flex: 1;
     }
 
-    .price-chart {
+    #price-chart {
         height: 280px;
+
+        min-height: 280px;
+    }
+
+    .chart-loading,
+    .chart-placeholder {
+        min-height: 280px;
     }
 
     .asset-stats {
         grid-template-columns: 1fr;
     }
-
 }
 
-/* ============================= */
-/* PRICE CHART */
-/* ============================= */
-
-.price-chart {
-    position: relative;
-    height: 380px;
-    padding: 0;
-}
-
-.price-chart-svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-.chart-grid {
-    stroke: #1d1f23;
-    stroke-width: 1;
-    stroke-dasharray: 5 5;
-}
-
-.chart-positive {
-    stroke: #ffffff;
-    stroke-width: 3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.chart-negative {
-    stroke: #999999;
-    stroke-width: 3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.chart-positive-area {
-    fill: rgba(255, 255, 255, 0.06);
-}
-
-.chart-negative-area {
-    fill: rgba(150, 150, 150, 0.05);
-}
-
-.chart-positive-dot {
-    fill: white;
-}
-
-.chart-negative-dot {
-    fill: #999999;
-}
-
-.chart-bottom {
-    position: absolute;
-    left: 35px;
-    right: 35px;
-    bottom: 10px;
-
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-
-    color: #666;
-    font-size: 12px;
-}
-
-.chart-bottom strong {
-    color: white;
-}
 
 /* ============================= */
 /* ADMIN PANEL */
@@ -920,14 +1045,19 @@ form button {
 
 .admin-page {
     width: 100%;
+
     max-width: 1100px;
+
     padding: 30px;
 }
 
 .admin-header {
     display: flex;
+
     align-items: center;
+
     justify-content: space-between;
+
     margin-bottom: 70px;
 }
 
@@ -937,6 +1067,7 @@ form button {
 
 .admin-title h1 {
     font-size: 40px;
+
     margin: 8px 0;
 }
 
@@ -946,29 +1077,42 @@ form button {
 
 .admin-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+
+    grid-template-columns:
+        1fr 1fr;
+
     gap: 15px;
+
     margin-bottom: 15px;
 }
 
 .admin-description {
     color: #777;
+
     font-size: 14px;
+
     margin-bottom: 25px;
 }
 
 select {
     width: 100%;
+
     padding: 15px;
+
     border-radius: 9px;
+
     border: 1px solid #292c31;
+
     background: #0c0d0f;
+
     color: white;
+
     font-size: 15px;
 }
 
 select:focus {
     outline: none;
+
     border-color: #666;
 }
 
@@ -976,41 +1120,60 @@ select:focus {
     margin-top: 15px;
 }
 
-.admin-company {
-    display: flex;
+
+/*
+   IMPORTANT:
+   app.js creates .admin-company-row,
+   not .admin-company.
+*/
+
+.admin-company-row {
+    display: grid;
+
+    grid-template-columns:
+        minmax(250px, 1fr)
+        150px
+        130px;
+
     align-items: center;
-    justify-content: space-between;
+
+    gap: 20px;
+
     padding: 18px 0;
+
     border-bottom: 1px solid #1d1f23;
 }
 
-.admin-company:last-child {
+.admin-company-row:last-child {
     border-bottom: none;
 }
 
-.admin-company-info strong {
+.admin-company-row > div:first-child {
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 5px;
+
+    min-width: 0;
+}
+
+.admin-company-row > div:first-child strong {
     display: block;
+
     font-size: 16px;
 }
 
-.admin-company-info span {
+.admin-company-row > div:first-child span {
     display: block;
+
     color: #777;
+
     font-size: 13px;
-    margin-top: 5px;
 }
 
-.admin-company-price {
-    text-align: right;
-}
-
-.admin-company-price strong {
-    display: block;
-}
-
-.admin-company-price span {
-    color: #777;
-    font-size: 12px;
+.admin-company-row > div:not(:first-child) {
+    color: #ddd;
 }
 
 @media (max-width: 700px) {
@@ -1023,34 +1186,16 @@ select:focus {
         padding: 15px;
     }
 
-}
+    .admin-company-row {
+        grid-template-columns:
+            1fr auto;
 
-/* ============================================================
-   MKM INTERACTIVE CHART
-   ============================================================ */
+        gap: 10px;
+    }
 
-#price-chart {
-    width: 100%;
-    height: 420px;
-    min-height: 420px;
-    background: #080808;
-    border-radius: 12px;
-    overflow: hidden;
-    position: relative;
-}
-
-.chart-loading,
-.chart-placeholder {
-    width: 100%;
-    height: 100%;
-    min-height: 420px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #777;
-    background: #080808;
-}
-
-#price-chart canvas {
-    display: block;
+    .admin-company-row > div:last-child {
+        grid-column: 1 / -1;
+        color: #777;
+        font-size: 13px;
+    }
 }
