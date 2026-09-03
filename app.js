@@ -1,5 +1,5 @@
 // ============================================================
-// MKM HQ - APP.JS
+// MKM Exchange - APP.JS
 // ============================================================
 
 // ------------------------------------------------------------
@@ -4042,7 +4042,7 @@ async function loadNews() {
                         ? escapeHTML(
                             article.Assets.symbol
                         )
-                        : "MKM HQ"
+                        : "MKM Exchange"
                 }
                 ·
                 ${formatDateTime(article.created_at)}
