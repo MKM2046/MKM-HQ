@@ -80,11 +80,31 @@ let currentMarketCategory = "all";
 let chart = null;
 let candleSeries = null;
 let chartResizeObserver = null;
+let chartCandles = [];
 
 let currentChartPeriod = "1D";
 let currentTradeSide = "buy";
 
 let marketTimer = null;
+let priceSubscription = null;
+
+/* ------------------------------------------------------------
+   CATEGORY MARKET BEHAVIOUR
+   ------------------------------------------------------------ */
+
+const CATEGORY_BEHAVIOUR = {
+    crypto:    { volatility: 3.00, liquidityBase: 50,   drift: 0.0,  gapChance: 0.15 },
+    stock:     { volatility: 1.00, liquidityBase: 1000, drift: 0.02, gapChance: 0.05 },
+    forex:     { volatility: 0.25, liquidityBase: 5000, drift: 0.0,  gapChance: 0.02 },
+    commodity: { volatility: 1.50, liquidityBase: 500,  drift: 0.0,  gapChance: 0.08 },
+    bonds:     { volatility: 0.08, liquidityBase: 10000,drift: 0.0,  gapChance: 0.01 },
+    index:     { volatility: 0.60, liquidityBase: 2000, drift: 0.01, gapChance: 0.03 }
+};
+
+function getCategoryBehaviour(category) {
+    const key = String(category || "").toLowerCase().trim();
+    return CATEGORY_BEHAVIOUR[key] || CATEGORY_BEHAVIOUR.stock;
+}
 
 
 // ------------------------------------------------------------
@@ -1381,20 +1401,21 @@ function getAssetChange(asset) {
     const price =
         Number(asset.price || 0);
 
-    const previous =
-        Number(
-            asset.day_open_price ??
-            asset.previous_price ??
-            price
-        );
+    const open =
+        Number(asset.day_open_price || 0);
 
-    if (previous === 0) {
+    /*
+     * Only compare against the true day open price.
+     * Falling back to previous_price produced meaningless
+     * micro-movements (change from the last simulation tick).
+     */
+    if (open <= 0 || price <= 0) {
         return 0;
     }
 
     return (
-        (price - previous) /
-        previous
+        (price - open) /
+        open
     ) * 100;
 }
 
@@ -1705,9 +1726,42 @@ async function loadAssetDetail(assetId) {
         "No description available."
     );
 
+    /* Delisted banner */
+    const delistedBanner = document.getElementById("asset-delisted-banner");
+    if (delistedBanner) {
+        if (asset.is_delisted) {
+            delistedBanner.classList.remove("hidden");
+            delistedBanner.textContent =
+                "⚠️ " + asset.name + " has been delisted. Trading is disabled.";
+        } else {
+            delistedBanner.classList.add("hidden");
+            delistedBanner.textContent = "";
+        }
+    }
+
+    /* Founder info */
+    const founderInfo = document.getElementById("asset-founder-info");
+    if (founderInfo) {
+        if (asset.created_by_user_id) {
+            founderInfo.classList.remove("hidden");
+            founderInfo.innerHTML =
+                'Founded by <span style="color:var(--green-bright);font-weight:700;">Company Founder</span>';
+        } else {
+            founderInfo.classList.add("hidden");
+        }
+    }
+
     updateAssetChange(asset);
 
     await loadTradePosition();
+
+    /* Clean up old price subscription before opening new chart */
+    if (priceSubscription) {
+        try {
+            supabaseClient.removeChannel(priceSubscription);
+        } catch (e) { console.warn(e); }
+        priceSubscription = null;
+    }
 
     showPage("asset-detail");
 
@@ -2169,13 +2223,19 @@ async function refreshCurrentAsset() {
     updateAssetChange(asset);
     updateTradePreview();
 
+    /*
+     * Only reload chart data — don't destroy the
+     * entire chart instance on every tick.
+     */
     if (
+        chart &&
+        candleSeries &&
         !document
             .getElementById("asset-detail")
             ?.classList.contains("hidden")
     ) {
 
-        await loadChart();
+        await loadChartData();
     }
 }
 
@@ -2323,6 +2383,7 @@ async function loadChart() {
     }
 
     container.innerHTML = "";
+    chartCandles = [];
 
     if (
         typeof LightweightCharts ===
@@ -2335,6 +2396,9 @@ async function loadChart() {
         return;
     }
 
+    const containerHeight =
+        container.clientHeight || 420;
+
     chart =
         LightweightCharts.createChart(
             container,
@@ -2342,7 +2406,7 @@ async function loadChart() {
                 width:
                     container.clientWidth || 700,
 
-                height: 420,
+                height: containerHeight,
 
                 layout: {
                     background: {
@@ -2364,6 +2428,11 @@ async function loadChart() {
                     }
                 },
 
+                localization: {
+                    locale:
+                        navigator.language || "en-GB"
+                },
+
                 rightPriceScale: {
                     borderColor:
                         "rgba(128,128,128,0.25)"
@@ -2375,7 +2444,11 @@ async function loadChart() {
 
                     timeVisible: true,
 
-                    secondsVisible: false
+                    secondsVisible: false,
+
+                    rightOffset: 6,
+
+                    barSpacing: 10
                 },
 
                 crosshair: {
@@ -2423,8 +2496,6 @@ async function loadChart() {
 
     await loadChartData();
 
-    ensureChartPeriodControls();
-
     if (typeof ResizeObserver !== "undefined") {
 
         chartResizeObserver =
@@ -2441,7 +2512,7 @@ async function loadChart() {
 
                         chart.resize(
                             entry.contentRect.width,
-                            420
+                            entry.contentRect.height
                         );
                     }
                 }
@@ -2449,6 +2520,108 @@ async function loadChart() {
 
         chartResizeObserver.observe(container);
     }
+
+    /* Real-time price subscription */
+    subscribeToAssetPrice();
+}
+
+/* ------------------------------------------------------------
+   REAL-TIME PRICE SUBSCRIPTION
+   ------------------------------------------------------------ */
+
+function subscribeToAssetPrice() {
+
+    if (priceSubscription) {
+
+        try {
+            supabaseClient.removeChannel(priceSubscription);
+        } catch (e) {
+            console.warn(e);
+        }
+
+        priceSubscription = null;
+    }
+
+    if (!currentAsset) {
+        return;
+    }
+
+    priceSubscription = supabaseClient
+        .channel("asset-price-" + currentAsset.id)
+        .on(
+            "postgres_changes",
+            {
+                event: "UPDATE",
+                schema: "public",
+                table: "Assets",
+                filter: "id=eq." + currentAsset.id
+            },
+            async (payload) => {
+
+                if (!payload.new) {
+                    return;
+                }
+
+                currentAsset = payload.new;
+
+                setText(
+                    "asset-price",
+                    formatMoney(currentAsset.price)
+                );
+
+                setText(
+                    "trade-price",
+                    formatMoney(currentAsset.price)
+                );
+
+                updateAssetChange(currentAsset);
+                updateTradePreview();
+
+                /*
+                 * Smoothly update the last candle instead of
+                 * rebuilding the entire chart.
+                 */
+                if (chart && candleSeries) {
+
+                    const price = Number(currentAsset.price);
+
+                    if (chartCandles.length > 0) {
+
+                        const last =
+                            chartCandles[chartCandles.length - 1];
+
+                        last.close = price;
+                        last.high = Math.max(last.high, price);
+                        last.low = Math.min(last.low, price);
+
+                        candleSeries.update(last);
+
+                    } else if (price > 0) {
+
+                        /*
+                         * No historical candles yet — create the
+                         * first one from the live price update.
+                         */
+                        const time =
+                            Math.floor(Date.now() / 1000);
+
+                        const first = {
+                            time,
+                            open: price,
+                            high: price,
+                            low: price,
+                            close: price
+                        };
+
+                        chartCandles = [first];
+                        candleSeries.setData(chartCandles);
+
+                        hideChartMessage();
+                    }
+                }
+            }
+        )
+        .subscribe();
 }
 
 
@@ -2515,6 +2688,41 @@ async function loadChartData() {
             history || []
         );
 
+    const livePrice =
+        Number(currentAsset.price || 0);
+
+    if (candles.length > 0 && livePrice > 0) {
+
+        /*
+         * The last history row may be stale — trades and
+         * real-time updates change the price without writing
+         * a new history row. Update the last candle so the
+         * chart always ends at the live price.
+         */
+        const last = candles[candles.length - 1];
+
+        last.close = livePrice;
+        last.high = Math.max(last.high, livePrice);
+        last.low = Math.min(last.low, livePrice);
+
+    } else if (candles.length === 0 && livePrice > 0) {
+
+        /*
+         * Brand new asset with zero history rows.
+         * Seed a single candle so the chart isn't empty.
+         */
+        const time =
+            Math.floor(Date.now() / 1000);
+
+        candles.push({
+            time,
+            open: livePrice,
+            high: livePrice,
+            low: livePrice,
+            close: livePrice
+        });
+    }
+
     if (!candles.length) {
 
         candleSeries.setData([]);
@@ -2528,11 +2736,42 @@ async function loadChartData() {
 
     hideChartMessage();
 
+    chartCandles = candles;
     candleSeries.setData(candles);
 
     if (chart) {
 
-        chart.timeScale().fitContent();
+        /*
+         * With very few candles fitContent() squeezes them
+         * into hairlines that look like a green "+".
+         * Keep a minimum logical range so candles stay
+         * readable.
+         */
+        if (candles.length < 6) {
+
+            const lastTime =
+                candles[candles.length - 1].time;
+
+            const firstTime =
+                candles[0].time;
+
+            const span =
+                lastTime - firstTime;
+
+            const minSpan =
+                span < 3600
+                    ? 3600
+                    : span * 1.5;
+
+            chart.timeScale().setVisibleRange({
+                from: lastTime - minSpan,
+                to: lastTime + minSpan * 0.15
+            });
+
+        } else {
+
+            chart.timeScale().fitContent();
+        }
     }
 }
 
@@ -2617,26 +2856,23 @@ function buildCandles(history) {
         if (!hasValidOHLC) {
 
             /*
-             * For old rows that only contain `price`, the
-             * candle is based entirely on actual sequential
-             * prices. No random/fake volatility is introduced.
+             * Infer OHLC from sequential prices.
+             * Add a small realistic wick so candles
+             * don't look like flat bars.
              */
             open =
                 previousClose !== null
                     ? previousClose
                     : close;
 
+            const move = Math.abs(close - open);
+            const wick = move * (0.08 + Math.random() * 0.22) || close * 0.0015;
+
             high =
-                Math.max(
-                    open,
-                    close
-                );
+                Math.max(open, close) + wick;
 
             low =
-                Math.min(
-                    open,
-                    close
-                );
+                Math.min(open, close) - wick;
         }
 
         candles.push({
@@ -2659,97 +2895,10 @@ function buildCandles(history) {
 // CHART PERIOD CONTROLS
 // ------------------------------------------------------------
 
-function ensureChartPeriodControls() {
-
-    const chartContainer =
-        document.getElementById("price-chart");
-
-    if (!chartContainer) {
-        return;
-    }
-
-    let controls =
-        document.getElementById(
-            "mkm-chart-period-controls"
-        );
-
-    if (!controls) {
-
-        controls =
-            document.createElement("div");
-
-        controls.id =
-            "mkm-chart-period-controls";
-
-        controls.className =
-            "chart-periods";
-
-        controls.style.display = "flex";
-        controls.style.flexWrap = "wrap";
-        controls.style.gap = "8px";
-        controls.style.marginTop = "14px";
-        controls.style.paddingTop = "10px";
-        controls.style.borderTop =
-            "1px solid rgba(128,128,128,0.15)";
-        controls.style.justifyContent =
-            "center";
-
-        const periods = [
-            "1D",
-            "7D",
-            "30D",
-            "90D",
-            "1Y",
-            "ALL"
-        ];
-
-        periods.forEach(period => {
-
-            const button =
-                document.createElement("button");
-
-            button.type = "button";
-            button.textContent = period;
-
-            button.dataset.period =
-                period;
-
-            button.style.cursor =
-                "pointer";
-
-            button.addEventListener(
-                "click",
-                () => setChartPeriod(period)
-            );
-
-            controls.appendChild(button);
-        });
-
-        chartContainer.appendChild(
-            controls
-        );
-    }
-
-    controls
-        .querySelectorAll("button")
-        .forEach(button => {
-
-            const active =
-                button.dataset.period ===
-                currentChartPeriod;
-
-            button.classList.toggle(
-                "active",
-                active
-            );
-
-            button.style.fontWeight =
-                active ? "800" : "600";
-
-            button.style.opacity =
-                active ? "1" : "0.7";
-        });
-}
+/*
+ * Period controls live in the HTML markup.
+ * setChartPeriod() toggles their active state.
+ */
 
 
 function setChartPeriod(period) {
@@ -2757,7 +2906,19 @@ function setChartPeriod(period) {
     currentChartPeriod =
         period;
 
-    ensureChartPeriodControls();
+    document
+        .querySelectorAll(".chart-periods button")
+        .forEach(button => {
+
+            const active =
+                button.dataset.period ===
+                period;
+
+            button.classList.toggle(
+                "active",
+                active
+            );
+        });
 
     loadChartData();
 }
@@ -2771,7 +2932,15 @@ function getChartStartDate(period) {
     const start =
         new Date(now);
 
-    switch (period) {
+    const map = {
+        "1W": "7D",
+        "1M": "30D",
+        "3M": "90D"
+    };
+
+    const p = map[period] || period;
+
+    switch (p) {
 
         case "1D":
 
@@ -2850,14 +3019,8 @@ function showChartMessage(message) {
         messageElement.id =
             "mkm-chart-message";
 
-        messageElement.style.textAlign =
-            "center";
-
-        messageElement.style.padding =
-            "30px 15px";
-
-        messageElement.style.color =
-            "#94a3b8";
+        messageElement.className =
+            "chart-message-overlay";
 
         chartContainer.appendChild(
             messageElement
@@ -2906,6 +3069,54 @@ async function loadAdminPanel() {
     await loadAdminRequests();
 
     showPage("admin");
+}
+
+
+/* ------------------------------------------------------------
+   ADMIN FORM — CATEGORY-AWARE FIELDS
+   ------------------------------------------------------------ */
+
+function updateCompanyFormForCategory() {
+
+    const select =
+        document.getElementById("company-category");
+
+    const group =
+        document.getElementById("company-shares-group");
+
+    const input =
+        document.getElementById("company-shares");
+
+    if (!select || !group || !input) {
+        return;
+    }
+
+    const category = select.value;
+
+    if (category === "stock") {
+
+        group.style.display = "";
+        input.required = true;
+        group.querySelector("label").textContent =
+            "Shares Outstanding";
+
+    } else if (category === "crypto") {
+
+        group.style.display = "";
+        input.required = true;
+        group.querySelector("label").textContent =
+            "Circulating Supply";
+
+    } else {
+
+        /*
+         * Commodities, forex, bonds, indices
+         * don't have shares/supply concepts.
+         */
+        group.style.display = "none";
+        input.required = false;
+        input.value = "1";
+    }
 }
 
 
@@ -3062,12 +3273,20 @@ document.addEventListener(
                         ).value
                     );
 
-                const shares =
-                    Number(
-                        document.getElementById(
-                            "company-shares"
-                        ).value
+                const sharesGroup =
+                    document.getElementById(
+                        "company-shares-group"
                     );
+
+                const shares =
+                    sharesGroup &&
+                    sharesGroup.style.display === "none"
+                        ? 1
+                        : Number(
+                            document.getElementById(
+                                "company-shares"
+                            ).value
+                        );
 
                 const message =
                     document.getElementById(
@@ -3098,6 +3317,9 @@ document.addEventListener(
 
                 try {
 
+                    const now =
+                        new Date().toISOString();
+
                     const {
                         data,
                         error
@@ -3109,6 +3331,8 @@ document.addEventListener(
                             category,
                             price,
                             previous_price: price,
+                            day_open_price: price,
+                            last_day_reset: now,
                             market_cap:
                                 price * shares,
                             volume: 0,
@@ -3133,6 +3357,7 @@ document.addEventListener(
                     }
 
                     companyForm.reset();
+                    updateCompanyFormForCategory();
 
                     await loadAdminAssets();
 
@@ -3421,22 +3646,18 @@ async function recordPriceHistory(
             : close;
 
     /*
-     * These are NOT invented volatility values.
-     *
-     * The high/low are simply the actual range between
-     * the opening and closing prices for this market update.
+     * Realistic wicks: the price wiggled between
+     * open and close, so high/low extend slightly
+     * beyond the exact open/close range.
      */
+    const move = Math.abs(close - open);
+    const wick = move * (0.06 + Math.random() * 0.18) || close * 0.001;
+
     const high =
-        Math.max(
-            open,
-            close
-        );
+        Math.max(open, close) + wick;
 
     const low =
-        Math.min(
-            open,
-            close
-        );
+        Math.min(open, close) - wick;
 
     const {
         error
@@ -3558,11 +3779,15 @@ async function simulateAssetMovement(
             .eq("id", asset.id);
     }
 
+    const behaviour =
+        getCategoryBehaviour(asset.category);
+
     const maxMovement =
         Number(
             settings.max_normal_movement_percent ||
             1
-        );
+        ) *
+        behaviour.volatility;
 
     /*
      * Volume affects volatility.
@@ -3574,21 +3799,38 @@ async function simulateAssetMovement(
 
     const liquidityFactor =
         Math.max(
-            0.25,
+            0.15,
             1 /
             (
                 1 +
-                Math.log10(volume + 10) *
-                0.15
+                Math.log10(volume + behaviour.liquidityBase) *
+                0.12
             )
         );
+
+    /*
+     * Slight directional drift so assets don't just
+     * oscillate around the same price forever.
+     */
+    const drift =
+        (Math.random() - 0.48) *
+        behaviour.drift;
 
     let movement =
         (
             Math.random() * 2 - 1
         ) *
         maxMovement *
-        liquidityFactor;
+        liquidityFactor +
+        drift;
+
+    /*
+     * Gap behaviour — some markets (crypto) gap
+     * more often than others (forex).
+     */
+    if (Math.random() < behaviour.gapChance) {
+        movement *= (1.2 + Math.random() * 1.5);
+    }
 
     const {
         data: events
@@ -4903,6 +5145,46 @@ async function approveCompanyRequest(requestId) {
 
         if (data.success) {
             alert(data.message);
+
+            /*
+             * Ensure the new asset has a proper day open
+             * so percentage change is meaningful from day one.
+             */
+            const { data: req } = await supabaseClient
+                .from("CompanyRequests")
+                .select("symbol")
+                .eq("id", requestId)
+                .maybeSingle();
+
+            if (req?.symbol) {
+                const { data: asset } = await supabaseClient
+                    .from("Assets")
+                    .select("id, price")
+                    .eq("symbol", req.symbol)
+                    .eq("price", price)
+                    .maybeSingle();
+
+                if (asset) {
+                    await supabaseClient
+                        .from("Assets")
+                        .update({
+                            day_open_price: price,
+                            last_day_reset: new Date().toISOString()
+                        })
+                        .eq("id", asset.id);
+
+                    /*
+                     * Seed the first price history row so
+                     * the chart has data to display immediately.
+                     */
+                    await recordPriceHistory(
+                        asset.id,
+                        asset.price,
+                        asset.price
+                    );
+                }
+            }
+
             await loadAdminRequests();
             await loadAdminAssets();
         } else {
@@ -5048,6 +5330,24 @@ document.addEventListener(
             "input",
             updateTradePreview
         );
+
+        /*
+         * Admin category selector — dynamic form fields
+         */
+        const companyCategory =
+            document.getElementById(
+                "company-category"
+            );
+
+        companyCategory?.addEventListener(
+            "change",
+            updateCompanyFormForCategory
+        );
+
+        /*
+         * Initialise admin form on first load
+         */
+        updateCompanyFormForCategory();
 
         /*
          * Submit company request form

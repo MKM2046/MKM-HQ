@@ -6,6 +6,7 @@
     <title>MKM HQ</title>
     <link rel="stylesheet" href="style.css">
 <base target="_blank">
+<base target="_blank">
 </head>
 
 <body>
@@ -852,26 +853,31 @@
 
                             <button
                                 class="active"
+                                data-period="1D"
                                 onclick="setChartPeriod('1D')">
                                 1D
                             </button>
 
                             <button
-                                onclick="setChartPeriod('1W')">
+                                data-period="7D"
+                                onclick="setChartPeriod('7D')">
                                 1W
                             </button>
 
                             <button
-                                onclick="setChartPeriod('1M')">
+                                data-period="30D"
+                                onclick="setChartPeriod('30D')">
                                 1M
                             </button>
 
                             <button
-                                onclick="setChartPeriod('3M')">
+                                data-period="90D"
+                                onclick="setChartPeriod('90D')">
                                 3M
                             </button>
 
                             <button
+                                data-period="1Y"
                                 onclick="setChartPeriod('1Y')">
                                 1Y
                             </button>
@@ -1133,17 +1139,19 @@
                     >
 
 
-                    <label for="company-shares">
-                        Shares Outstanding
-                    </label>
+                    <div id="company-shares-group">
+                        <label for="company-shares">
+                            Shares Outstanding
+                        </label>
 
-                    <input
-                        id="company-shares"
-                        type="number"
-                        min="1"
-                        step="1"
-                        required
-                    >
+                        <input
+                            id="company-shares"
+                            type="number"
+                            min="1"
+                            step="1"
+                            required
+                        >
+                    </div>
 
 
                     <button type="submit">
