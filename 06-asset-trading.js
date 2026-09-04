@@ -1,3 +1,4 @@
+// ============================================================
 // ASSET DETAIL
 // ============================================================
 
@@ -13,15 +14,12 @@ async function loadAssetDetail(assetId) {
         .maybeSingle();
 
     if (error) {
-
         console.error(error);
         return;
     }
 
     if (!asset) {
-
         alert("Asset not found.");
-
         return;
     }
 
@@ -52,11 +50,22 @@ async function loadAssetDetail(assetId) {
         formatNumber(asset.volume || 0)
     );
 
-    const volumeFill = document.getElementById("volume-fill");
+    const volumeFill =
+        document.getElementById("volume-fill");
+
     if (volumeFill) {
-        const maxVolume = Math.max(asset.volume || 0, 1000000);
-        const pct = Math.min(100, ((asset.volume || 0) / maxVolume) * 100);
-        volumeFill.style.width = pct + "%";
+
+        const maxVolume =
+            Math.max(asset.volume || 0, 1000000);
+
+        const pct =
+            Math.min(
+                100,
+                ((asset.volume || 0) / maxVolume) * 100
+            );
+
+        volumeFill.style.width =
+            pct + "%";
     }
 
     setText(
@@ -65,28 +74,63 @@ async function loadAssetDetail(assetId) {
         "No description available."
     );
 
-    /* Delisted banner */
-    const delistedBanner = document.getElementById("asset-delisted-banner");
+    /* --------------------------------------------------------
+       Delisted banner
+    -------------------------------------------------------- */
+
+    const delistedBanner =
+        document.getElementById(
+            "asset-delisted-banner"
+        );
+
     if (delistedBanner) {
+
         if (asset.is_delisted) {
-            delistedBanner.classList.remove("hidden");
+
+            delistedBanner.classList.remove(
+                "hidden"
+            );
+
             delistedBanner.textContent =
-                "⚠️ " + asset.name + " has been delisted. Trading is disabled.";
+                "⚠️ " +
+                asset.name +
+                " has been delisted. Trading is disabled.";
+
         } else {
-            delistedBanner.classList.add("hidden");
+
+            delistedBanner.classList.add(
+                "hidden"
+            );
+
             delistedBanner.textContent = "";
         }
     }
 
-    /* Founder info */
-    const founderInfo = document.getElementById("asset-founder-info");
+    /* --------------------------------------------------------
+       Founder info
+    -------------------------------------------------------- */
+
+    const founderInfo =
+        document.getElementById(
+            "asset-founder-info"
+        );
+
     if (founderInfo) {
+
         if (asset.created_by_user_id) {
-            founderInfo.classList.remove("hidden");
+
+            founderInfo.classList.remove(
+                "hidden"
+            );
+
             founderInfo.innerHTML =
                 'Founded by <span style="color:var(--green-bright);font-weight:700;">Company Founder</span>';
+
         } else {
-            founderInfo.classList.add("hidden");
+
+            founderInfo.classList.add(
+                "hidden"
+            );
         }
     }
 
@@ -94,11 +138,23 @@ async function loadAssetDetail(assetId) {
 
     await loadTradePosition();
 
-    /* Clean up old price subscription before opening new chart */
+    /* --------------------------------------------------------
+       Clean up old price subscription before opening new chart
+    -------------------------------------------------------- */
+
     if (priceSubscription) {
+
         try {
-            supabaseClient.removeChannel(priceSubscription);
-        } catch (e) { console.warn(e); }
+
+            supabaseClient.removeChannel(
+                priceSubscription
+            );
+
+        } catch (e) {
+
+            console.warn(e);
+        }
+
         priceSubscription = null;
     }
 
@@ -111,9 +167,9 @@ async function loadAssetDetail(assetId) {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // ASSET CHANGE
-// ------------------------------------------------------------
+// ============================================================
 
 function updateAssetChange(asset) {
 
@@ -121,7 +177,9 @@ function updateAssetChange(asset) {
         getAssetChange(asset);
 
     const element =
-        document.getElementById("asset-change");
+        document.getElementById(
+            "asset-change"
+        );
 
     if (!element) {
         return;
@@ -184,6 +242,10 @@ function setTradeSide(side) {
     updateTradePreview();
 }
 
+
+// ============================================================
+// LOAD CURRENT POSITION
+// ============================================================
 
 async function loadTradePosition() {
 
@@ -252,7 +314,9 @@ async function loadTradePosition() {
     );
 
     applyTrendStyle(
-        document.getElementById("position-pnl"),
+        document.getElementById(
+            "position-pnl"
+        ),
         pnl
     );
 
@@ -261,6 +325,10 @@ async function loadTradePosition() {
     updateTradePreview();
 }
 
+
+// ============================================================
+// REFRESH TRADE BALANCE
+// ============================================================
 
 async function refreshTradeBalance() {
 
@@ -280,20 +348,28 @@ async function refreshTradeBalance() {
     if (error) {
 
         console.error(error);
+
         return;
     }
 
     if (currentProfile) {
+
         currentProfile.balance =
-            profile?.balance || 0;
+            Number(profile?.balance || 0);
     }
 
     setText(
         "trade-balance",
-        formatMoney(profile?.balance || 0)
+        formatMoney(
+            profile?.balance || 0
+        )
     );
 }
 
+
+// ============================================================
+// TRADE PREVIEW
+// ============================================================
 
 function updateTradePreview() {
 
@@ -302,7 +378,9 @@ function updateTradePreview() {
     }
 
     const sharesInput =
-        document.getElementById("trade-shares");
+        document.getElementById(
+            "trade-shares"
+        );
 
     const shares =
         Math.max(
@@ -328,11 +406,15 @@ function updateTradePreview() {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // SUBMIT TRADE
-// ------------------------------------------------------------
+// ============================================================
 
 async function submitTrade() {
+
+    /* --------------------------------------------------------
+       Basic checks
+    -------------------------------------------------------- */
 
     if (!currentUser) {
 
@@ -354,11 +436,35 @@ async function submitTrade() {
         return;
     }
 
+    /* --------------------------------------------------------
+       Prevent trading delisted assets
+    -------------------------------------------------------- */
+
+    if (currentAsset.is_delisted) {
+
+        showTradeMessage(
+            "This asset has been delisted. Trading is disabled.",
+            true
+        );
+
+        return;
+    }
+
+    /* --------------------------------------------------------
+       Get input
+    -------------------------------------------------------- */
+
     const input =
-        document.getElementById("trade-shares");
+        document.getElementById(
+            "trade-shares"
+        );
 
     const shares =
         Number(input?.value || 0);
+
+    /* --------------------------------------------------------
+       Validate shares locally
+    -------------------------------------------------------- */
 
     if (
         !Number.isInteger(shares) ||
@@ -373,11 +479,100 @@ async function submitTrade() {
         return;
     }
 
+    /* --------------------------------------------------------
+       Get current price
+    -------------------------------------------------------- */
+
     const price =
         Number(currentAsset.price || 0);
 
+    if (!Number.isFinite(price) || price <= 0) {
+
+        showTradeMessage(
+            "Invalid asset price.",
+            true
+        );
+
+        return;
+    }
+
     const total =
         shares * price;
+
+    /* --------------------------------------------------------
+       Refresh balance before checking buy
+       This prevents using an old balance.
+    -------------------------------------------------------- */
+
+    if (currentTradeSide === "buy") {
+
+        await refreshTradeBalance();
+
+        const balance =
+            Number(
+                currentProfile?.balance || 0
+            );
+
+        if (total > balance) {
+
+            showTradeMessage(
+                "Not enough paper balance for this trade.",
+                true
+            );
+
+            return;
+        }
+    }
+
+    /* --------------------------------------------------------
+       Refresh position before checking sell
+       This prevents using stale holdings.
+    -------------------------------------------------------- */
+
+    if (currentTradeSide === "sell") {
+
+        const {
+            data: position,
+            error
+        } = await supabaseClient
+            .from("Portfolios")
+            .select("shares")
+            .eq("user_id", currentUser.id)
+            .eq("asset_id", currentAsset.id)
+            .maybeSingle();
+
+        if (error) {
+
+            console.error(
+                "Position check error:",
+                error
+            );
+
+            showTradeMessage(
+                "Unable to verify your holdings.",
+                true
+            );
+
+            return;
+        }
+
+        const holdings =
+            Number(position?.shares || 0);
+
+        if (shares > holdings) {
+
+            showTradeMessage(
+                "You do not own enough shares to sell.",
+                true
+            );
+
+            return;
+        }
+    }
+
+    /* --------------------------------------------------------
+       Confirmation
+    -------------------------------------------------------- */
 
     const action =
         currentTradeSide === "buy"
@@ -395,8 +590,14 @@ async function submitTrade() {
         return;
     }
 
+    /* --------------------------------------------------------
+       Disable button while processing
+    -------------------------------------------------------- */
+
     const submit =
-        document.getElementById("trade-submit");
+        document.getElementById(
+            "trade-submit"
+        );
 
     if (submit) {
 
@@ -405,6 +606,21 @@ async function submitTrade() {
     }
 
     clearTradeMessage();
+
+    /* --------------------------------------------------------
+       Execute trade through Supabase RPC
+       
+       IMPORTANT:
+       Do NOT replace this with a direct Transactions insert.
+       
+       execute_trade should handle:
+       - balance validation
+       - holdings validation
+       - portfolio update
+       - balance update
+       - transaction creation
+       - atomicity
+    -------------------------------------------------------- */
 
     try {
 
@@ -420,23 +636,50 @@ async function submitTrade() {
             }
         );
 
+        /* ----------------------------------------------------
+           CRITICAL FIX:
+           If Supabase reports an error, stop immediately.
+           Do NOT show the success message.
+        ---------------------------------------------------- */
+
         if (error) {
+
+            console.error(
+                "Trade RPC error:",
+                error
+            );
+
             throw error;
         }
 
-        console.log("Trade result:", data);
+        console.log(
+            "Trade result:",
+            data
+        );
+
+        /* ----------------------------------------------------
+           Only reaches here if RPC succeeded.
+        ---------------------------------------------------- */
 
         showTradeMessage(
             `${action === "buy" ? "Bought" : "Sold"} ${shares} share${shares === 1 ? "" : "s"} successfully.`,
             false
         );
 
+        /* Reset input */
+
         if (input) {
             input.value = 1;
         }
 
+        /* ----------------------------------------------------
+           Refresh everything after successful trade
+        ---------------------------------------------------- */
+
         await refreshCurrentAsset();
+
         await loadTradePosition();
+
         await loadDashboardDataOnly();
 
     } catch (error) {
@@ -447,15 +690,22 @@ async function submitTrade() {
         );
 
         let message =
-            error.message ||
+            error?.message ||
             "Trade failed.";
 
         const lowerMessage =
             message.toLowerCase();
 
+        /* ----------------------------------------------------
+           Friendly error messages
+        ---------------------------------------------------- */
+
         if (
             lowerMessage.includes(
                 "insufficient balance"
+            ) ||
+            lowerMessage.includes(
+                "insufficient funds"
             )
         ) {
 
@@ -479,6 +729,15 @@ async function submitTrade() {
 
             message =
                 "Invalid trade type.";
+
+        } else if (
+            lowerMessage.includes(
+                "delisted"
+            )
+        ) {
+
+            message =
+                "This asset has been delisted. Trading is disabled.";
         }
 
         showTradeMessage(
@@ -487,6 +746,10 @@ async function submitTrade() {
         );
 
     } finally {
+
+        /* ----------------------------------------------------
+           Always restore button state
+        ---------------------------------------------------- */
 
         if (submit) {
 
@@ -501,9 +764,9 @@ async function submitTrade() {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // REFRESH CURRENT ASSET
-// ------------------------------------------------------------
+// ============================================================
 
 async function refreshCurrentAsset() {
 
@@ -523,6 +786,7 @@ async function refreshCurrentAsset() {
     if (error) {
 
         console.error(error);
+
         return;
     }
 
@@ -544,28 +808,52 @@ async function refreshCurrentAsset() {
 
     setText(
         "asset-market-cap",
-        formatMoney(asset.market_cap || 0)
+        formatMoney(
+            asset.market_cap || 0
+        )
     );
 
     setText(
         "asset-volume",
-        formatNumber(asset.volume || 0)
+        formatNumber(
+            asset.volume || 0
+        )
     );
 
-    const volumeFill = document.getElementById("volume-fill");
+    const volumeFill =
+        document.getElementById(
+            "volume-fill"
+        );
+
     if (volumeFill) {
-        const maxVolume = Math.max(asset.volume || 0, 1000000);
-        const pct = Math.min(100, ((asset.volume || 0) / maxVolume) * 100);
-        volumeFill.style.width = pct + "%";
+
+        const maxVolume =
+            Math.max(
+                asset.volume || 0,
+                1000000
+            );
+
+        const pct =
+            Math.min(
+                100,
+                ((asset.volume || 0) /
+                    maxVolume) *
+                    100
+            );
+
+        volumeFill.style.width =
+            pct + "%";
     }
 
     updateAssetChange(asset);
+
     updateTradePreview();
 
     /*
      * Only reload chart data — don't destroy the
      * entire chart instance on every tick.
      */
+
     if (
         chart &&
         candleSeries &&
@@ -579,9 +867,9 @@ async function refreshCurrentAsset() {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // DASHBOARD DATA ONLY
-// ------------------------------------------------------------
+// ============================================================
 
 async function loadDashboardDataOnly() {
 
@@ -605,7 +893,9 @@ async function loadDashboardDataOnly() {
 
     setText(
         "balance",
-        formatMoney(profile.balance || 0)
+        formatMoney(
+            profile.balance || 0
+        )
     );
 
     const portfolioValue =
@@ -613,12 +903,16 @@ async function loadDashboardDataOnly() {
 
     setText(
         "portfolio",
-        formatMoney(portfolioValue.value)
+        formatMoney(
+            portfolioValue.value
+        )
     );
 
     setText(
         "pnl",
-        formatSignedMoney(portfolioValue.pnl)
+        formatSignedMoney(
+            portfolioValue.pnl
+        )
     );
 
     applyTrendStyle(
@@ -628,9 +922,9 @@ async function loadDashboardDataOnly() {
 }
 
 
-// ------------------------------------------------------------
+// ============================================================
 // TRADE MESSAGES
-// ------------------------------------------------------------
+// ============================================================
 
 function showTradeMessage(
     message,
@@ -638,13 +932,16 @@ function showTradeMessage(
 ) {
 
     const element =
-        document.getElementById("trade-message");
+        document.getElementById(
+            "trade-message"
+        );
 
     if (!element) {
         return;
     }
 
-    element.textContent = message;
+    element.textContent =
+        message;
 
     element.classList.toggle(
         "negative",
@@ -666,7 +963,9 @@ function showTradeMessage(
 function clearTradeMessage() {
 
     const element =
-        document.getElementById("trade-message");
+        document.getElementById(
+            "trade-message"
+        );
 
     if (element) {
 
