@@ -5,17 +5,40 @@
    CONFIG
    ------------------------------------------------------------ */
 
-const CANDLE_INTERVAL = 60;        // seconds per real-time candle
 const CHART_REFRESH_MS = 30000;    // poll history every 30s
 let chartRefreshTimer = null;
 let isChartLoading = false;
 
+/* Map period buttons to candle interval in seconds */
+function normalizePeriod(period) {
+    const map = {
+        "1W": "7D",
+        "1M": "30D",
+        "3M": "90D"
+    };
+    return map[period] || period || "ALL";
+}
+
+function getCandleInterval(period) {
+    const p = normalizePeriod(period);
+    switch (p) {
+        case "1D":  return 300;        // 5 minutes
+        case "7D":  return 3600;       // 1 hour
+        case "30D": return 14400;      // 4 hours
+        case "90D": return 14400;      // 4 hours
+        case "1Y":  return 14400;      // 4 hours
+        case "ALL": return 86400;      // 1 day
+        default:    return 86400;
+    }
+}
+
 function getCandleTime(timestampSec) {
-    return Math.floor(timestampSec / CANDLE_INTERVAL) * CANDLE_INTERVAL;
+    const interval = getCandleInterval(currentChartPeriod);
+    return Math.floor(timestampSec / interval) * interval;
 }
 
 function chartLog(...args) {
-    const DEBUG = true; // flip to false once it's working
+    const DEBUG = true;
     if (DEBUG) console.log("[Chart]", ...args);
 }
 
@@ -70,14 +93,12 @@ function sanitizeCandle(c) {
     let fixedHigh = Number.isFinite(high) ? high : Math.max(open, close);
     let fixedLow  = Number.isFinite(low)  ? low  : Math.min(open, close);
 
-    // Ensure high >= low
     if (fixedHigh < fixedLow) {
         const tmp = fixedHigh;
         fixedHigh = fixedLow;
         fixedLow = tmp;
     }
 
-    // Ensure wicks extend past body
     fixedHigh = Math.max(fixedHigh, open, close);
     fixedLow  = Math.min(fixedLow,  open, close);
 
@@ -95,7 +116,6 @@ async function loadChart() {
         return;
     }
 
-    // Tear down old chart
     stopChartRefresh();
     if (chartResizeObserver) {
         try { chartResizeObserver.disconnect(); } catch (e) {}
@@ -139,7 +159,7 @@ async function loadChart() {
             },
             timeScale: {
                 borderColor: "rgba(128,128,128,0.25)",
-                timeVisible: true,
+                timeVisible: false,
                 secondsVisible: false,
                 rightOffset: 6,
                 barSpacing: 10
@@ -252,7 +272,7 @@ function subscribeToAssetPrice() {
                     const lastBucket = getCandleTime(last.time);
 
                     if (bucketTime === lastBucket) {
-                        // Same bucket — update existing candle
+                        // Same bucket — update current candle
                         const updated = sanitizeCandle({
                             time: last.time,
                             open: last.open,
@@ -275,7 +295,7 @@ function subscribeToAssetPrice() {
                         }
 
                     } else if (bucketTime > lastBucket) {
-                        // New bucket — create a fresh candle
+                        // New bucket — new candle, previous close = new open
                         const newCandle = sanitizeCandle({
                             time: bucketTime,
                             open: last.close,
@@ -301,10 +321,9 @@ function subscribeToAssetPrice() {
                             chart.timeScale().fitContent();
                         } catch (e) {}
                     }
-                    // bucketTime < lastBucket → clock went backwards, ignore
 
                 } else if (price > 0) {
-                    // No candles yet — seed first live candle
+                    // No candles yet — seed first candle
                     const first = sanitizeCandle({
                         time: bucketTime,
                         open: price,
@@ -371,17 +390,17 @@ async function loadChartData() {
         chartLog("History fetch exception:", err);
     }
 
-    // Build candles from history
+    // Build candles from history using the active interval
     const historyCandles = buildCandles(history);
 
-    // Preserve real-time candles that are newer than the last history row
+    // Preserve real-time candles that are newer or same-bucket as last history
     const realtimeCutoff = historyCandles.length > 0
         ? historyCandles[historyCandles.length - 1].time
         : 0;
 
-    const preservedRealtime = chartCandles.filter(c => c.time > realtimeCutoff);
+    const preservedRealtime = chartCandles.filter(c => c.time >= realtimeCutoff);
 
-    // Merge and deduplicate by time
+    // Merge and deduplicate by time (realtime overwrites history for current bucket)
     const mergedMap = new Map();
 
     for (const c of historyCandles) {
@@ -394,11 +413,11 @@ async function loadChartData() {
         if (sc) mergedMap.set(sc.time, sc);
     }
 
-    // Sort by time and enforce strictly increasing
     let merged = Array.from(mergedMap.values()).sort((a, b) => a.time - b.time);
     merged = merged.filter((c, i, arr) => i === 0 || c.time > arr[i - 1].time);
 
     const livePrice = Number(currentAsset.price || 0);
+    const interval = getCandleInterval(currentChartPeriod);
 
     if (merged.length > 0 && livePrice > 0) {
         const last = merged[merged.length - 1];
@@ -407,6 +426,7 @@ async function loadChartData() {
         const lastBucket = getCandleTime(last.time);
 
         if (bucketTime === lastBucket) {
+            // Still in same bucket — update with live price
             const updated = sanitizeCandle({
                 time: last.time,
                 open: last.open,
@@ -419,6 +439,7 @@ async function loadChartData() {
                 merged[merged.length - 1] = updated;
             }
         } else if (bucketTime > lastBucket) {
+            // New bucket started since last history fetch
             const newCandle = sanitizeCandle({
                 time: bucketTime,
                 open: last.close,
@@ -479,11 +500,11 @@ async function loadChartData() {
                 const lastTime = merged[merged.length - 1].time;
                 const firstTime = merged[0].time;
                 const span = lastTime - firstTime;
-                const minSpan = span < 3600 ? 3600 : span * 1.5;
+                const minSpan = span < 86400 * 7 ? 86400 * 7 : span * 1.2;
 
                 chart.timeScale().setVisibleRange({
                     from: lastTime - minSpan,
-                    to: lastTime + minSpan * 0.15
+                    to: lastTime + Math.max(interval * 2, 3600)
                 });
             } else {
                 chart.timeScale().fitContent();
@@ -495,64 +516,65 @@ async function loadChartData() {
 }
 
 /* ------------------------------------------------------------
-   REAL CANDLES
+   BUILD CANDLES FROM PRICE HISTORY (uses active interval)
    ------------------------------------------------------------ */
 
 function buildCandles(history) {
+    const interval = getCandleInterval(currentChartPeriod);
     const rows = [...history].sort(
         (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
     );
 
-    const candles = [];
-    let previousTime = 0;
-    let previousClose = null;
+    // Aggregate all price ticks into buckets based on the active interval
+    const bucketMap = new Map();
 
     rows.forEach(row => {
         const timestamp = new Date(row.recorded_at).getTime();
         if (!Number.isFinite(timestamp)) return;
 
-        let time = Math.floor(timestamp / 1000);
+        const bucketTime = Math.floor(timestamp / 1000 / interval) * interval;
 
-        // Lightweight Charts requires strictly increasing timestamps
+        const price = Number(row.price ?? row.close_price);
+        if (!Number.isFinite(price) || price <= 0) return;
+
+        if (!bucketMap.has(bucketTime)) {
+            bucketMap.set(bucketTime, {
+                time: bucketTime,
+                open: price,
+                high: price,
+                low: price,
+                close: price
+            });
+        } else {
+            const bucket = bucketMap.get(bucketTime);
+            bucket.high = Math.max(bucket.high, price);
+            bucket.low = Math.min(bucket.low, price);
+            bucket.close = price;
+        }
+    });
+
+    const sortedBuckets = Array.from(bucketMap.values()).sort((a, b) => a.time - b.time);
+
+    const candles = [];
+    let previousTime = 0;
+
+    sortedBuckets.forEach(bucket => {
+        let time = bucket.time;
         if (time <= previousTime) {
-            time = previousTime + 1;
+            time = previousTime + interval;
         }
 
-        const close = Number(row.close_price ?? row.price);
-        if (!Number.isFinite(close) || close <= 0) return;
+        const candle = sanitizeCandle({
+            time,
+            open: bucket.open,
+            high: bucket.high,
+            low: bucket.low,
+            close: bucket.close
+        });
 
-        let open = Number(row.open_price);
-        let high = Number(row.high_price);
-        let low  = Number(row.low_price);
-
-        const hasValidOHLC =
-            Number.isFinite(open) &&
-            Number.isFinite(high) &&
-            Number.isFinite(low) &&
-            open > 0 &&
-            high >= Math.max(open, close) &&
-            low <= Math.min(open, close) &&
-            high >= low;
-
-        if (!hasValidOHLC) {
-            open = previousClose !== null ? previousClose : close;
-
-            const move = Math.abs(close - open);
-            const baseWick = move > 0
-                ? move * (0.1 + Math.random() * 0.3)
-                : close * 0.002;
-
-            const wick = Math.max(baseWick, close * 0.0005);
-
-            high = Math.max(open, close) + wick;
-            low  = Math.min(open, close) - wick;
-        }
-
-        const candle = sanitizeCandle({ time, open, high, low, close });
         if (candle) {
             candles.push(candle);
             previousTime = candle.time;
-            previousClose = candle.close;
         }
     });
 

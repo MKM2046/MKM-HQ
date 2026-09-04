@@ -11,26 +11,26 @@ let currentAsset = null;
 
 const CATEGORY_BEHAVIOUR = {
     forex: {
-        volatility: 0.3,
-        drift: 0.05,
+        volatility: 0.05,      // was 0.3
+        drift: 0.008,          // was 0.05
         liquidityBase: 100000,
         gapChance: 0.02
     },
     stock: {
-        volatility: 1.0,
-        drift: 0.15,
+        volatility: 0.12,      // was 1.0
+        drift: 0.02,           // was 0.15
         liquidityBase: 50000,
         gapChance: 0.05
     },
     crypto: {
-        volatility: 2.5,
-        drift: 0.4,
+        volatility: 0.35,      // was 2.5
+        drift: 0.06,           // was 0.4
         liquidityBase: 5000,
         gapChance: 0.12
     },
     commodity: {
-        volatility: 0.8,
-        drift: 0.1,
+        volatility: 0.04,      // was 0.8
+        drift: 0.008,          // was 0.1
         liquidityBase: 20000,
         gapChance: 0.04
     }
@@ -41,13 +41,9 @@ function getCategoryBehaviour(category) {
 }
 
 // ------------------------------------------------------------
-// PRICE & CHANGE FORMATTING (THE FIX FOR LOW-PRICED ASSETS)
+// PRICE & CHANGE FORMATTING
 // ------------------------------------------------------------
 
-/**
- * Format a price for display.
- * Penny stocks and crypto need more decimal places so movement is visible.
- */
 function formatPrice(price) {
     const num = Number(price);
     if (!isFinite(num) || num < 0) return "$—";
@@ -61,10 +57,6 @@ function formatPrice(price) {
     return `$${num.toFixed(8)}`;
 }
 
-/**
- * Calculate and format percentage change.
- * KEY FIX: uses adaptive decimal precision so tiny moves on cheap assets don't round to 0%.
- */
 function formatPriceChange(current, previous) {
     const cur = Number(current);
     const prev = Number(previous);
@@ -76,7 +68,6 @@ function formatPriceChange(current, previous) {
     const rawChange = ((cur - prev) / prev) * 100;
     const absChange = Math.abs(rawChange);
 
-    // Adaptive precision: cheap assets with tiny % moves need more decimals
     let decimals = 2;
     if (absChange === 0) {
         decimals = 2;
@@ -86,8 +77,6 @@ function formatPriceChange(current, previous) {
         decimals = 4;
     } else if (absChange < 0.1) {
         decimals = 3;
-    } else if (absChange < 1) {
-        decimals = 2;
     }
 
     const sign = rawChange > 0 ? "+" : "";
@@ -128,7 +117,6 @@ async function runMarketSimulation() {
             await simulateAssetMovement(asset, settings);
         }
 
-        // Refresh UI if market tab is open
         const marketEl = document.getElementById("market");
         if (marketEl && !marketEl.classList.contains("hidden")) {
             await loadMarket();
@@ -147,7 +135,6 @@ async function simulateAssetMovement(asset, settings) {
     const current = Number(asset.price || 0);
     if (current <= 0) return;
 
-    // --- New-day open price reset ---
     const lastReset = asset.last_day_reset ? new Date(asset.last_day_reset) : null;
     const now = new Date();
     const isNewDay = !lastReset ||
@@ -171,24 +158,20 @@ async function simulateAssetMovement(asset, settings) {
         Number(settings.max_normal_movement_percent || 1) *
         behaviour.volatility;
 
-    // --- Liquidity factor ---
     const volume = Number(asset.volume || 0);
     const liquidityFactor = Math.max(
         0.15,
         1 / (1 + Math.log10(volume + behaviour.liquidityBase) * 0.12)
     );
 
-    // --- Drift ---
     const drift = (Math.random() - 0.48) * behaviour.drift;
 
     let movement = (Math.random() * 2 - 1) * maxMovement * liquidityFactor + drift;
 
-    // --- Gap behaviour ---
     if (Math.random() < behaviour.gapChance) {
         movement *= (1.2 + Math.random() * 1.5);
     }
 
-    // --- Market events ---
     const { data: events } = await supabaseClient
         .from("MarketEvents")
         .select("*")
@@ -211,11 +194,8 @@ async function simulateAssetMovement(asset, settings) {
             (event.direction === "up" ? 1 : -1);
     }
 
-    // --- Calculate new price ---
-    // Allow sub-penny prices so penny stocks can actually move and show % change
     const newPrice = Math.max(0.0001, current * (1 + movement / 100));
 
-    // --- Update asset ---
     const { error } = await supabaseClient
         .from("Assets")
         .update({
@@ -252,17 +232,15 @@ async function recordPriceHistory(assetId, newPrice, oldPrice) {
 }
 
 // ------------------------------------------------------------
-// UI REFRESH HELPERS (stubbed — wire to your actual UI)
+// UI REFRESH HELPERS
 // ------------------------------------------------------------
 
 async function loadMarket() {
-    // Your existing market-list render logic
-    // Use formatPrice() and formatPriceChange() when rendering rows
+    // Wired to 05-market.js
 }
 
 async function refreshCurrentAsset() {
-    // Your existing single-asset detail refresh
-    // Use formatPrice() and formatPriceChange() for the big numbers
+    // Wired to 06-asset-trading.js
 }
 
 // ------------------------------------------------------------
@@ -294,7 +272,7 @@ function stopMarketTimer() {
 }
 
 // ------------------------------------------------------------
-// EXPORTS (if using modules) or attach to window
+// EXPORTS
 // ------------------------------------------------------------
 
 if (typeof window !== "undefined") {
@@ -306,3 +284,5 @@ if (typeof window !== "undefined") {
         formatPriceChange
     };
 }
+
+// ============================================================
