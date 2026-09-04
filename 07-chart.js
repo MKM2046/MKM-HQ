@@ -19,6 +19,40 @@ function chartLog(...args) {
     if (DEBUG) console.log("[Chart]", ...args);
 }
 
+function getPricePrecision(price) {
+    const p = Number(price);
+    if (!isFinite(p) || p <= 0) return { precision: 2, minMove: 0.01 };
+    if (p >= 1)    return { precision: 2, minMove: 0.01 };
+    if (p >= 0.1)  return { precision: 3, minMove: 0.001 };
+    if (p >= 0.01) return { precision: 4, minMove: 0.0001 };
+    if (p >= 0.001)return { precision: 5, minMove: 0.00001 };
+    return { precision: 6, minMove: 0.000001 };
+}
+
+function formatMoney(value) {
+    const num = Number(value);
+    if (!isFinite(num)) return "$—";
+
+    const abs = Math.abs(num);
+    let decimals = 2;
+    if (abs < 0.001)      decimals = 6;
+    else if (abs < 0.01)  decimals = 5;
+    else if (abs < 0.1)   decimals = 4;
+    else if (abs < 1)     decimals = 3;
+
+    let str = num.toFixed(decimals);
+
+    if (decimals > 2) {
+        const parts = str.split(".");
+        if (parts.length === 2) {
+            parts[1] = parts[1].replace(/0+$/, "");
+            str = parts[1].length ? parts.join(".") : parts[0];
+        }
+    }
+
+    return (num < 0 ? "-" : "") + "$" + str.replace(/^-/, "");
+}
+
 /* Validate & fix a candle before passing to Lightweight Charts */
 function sanitizeCandle(c) {
     if (!c) return null;
@@ -124,6 +158,8 @@ async function loadChart() {
             }
         });
 
+        const priceFmt = getPricePrecision(currentAsset?.price);
+
         candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
             upColor: "#22c55e",
             downColor: "#ef4444",
@@ -133,8 +169,8 @@ async function loadChart() {
             wickDownColor: "#ef4444",
             priceFormat: {
                 type: "price",
-                precision: 2,
-                minMove: 0.01
+                precision: priceFmt.precision,
+                minMove: priceFmt.minMove
             },
             lastValueVisible: true,
             priceLineVisible: true

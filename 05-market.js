@@ -1,6 +1,30 @@
 // MARKET
 // ============================================================
 
+function formatSignedPercent(value) {
+    const num = Number(value);
+    if (!isFinite(num)) return "—";
+
+    const abs = Math.abs(num);
+    let decimals = 2;
+    if (abs > 0 && abs < 0.01) decimals = 4;
+    else if (abs < 0.1)        decimals = 3;
+
+    let str = num.toFixed(decimals);
+
+    if (decimals > 2) {
+        const parts = str.split(".");
+        if (parts.length === 2) {
+            parts[1] = parts[1].replace(/0+$/, "");
+            str = parts[1].length ? parts.join(".") : parts[0];
+        }
+    }
+
+    const sign = num > 0 ? "+" : "";
+    return sign + str + "%";
+}
+
+
 async function loadMarket() {
 
     const {
