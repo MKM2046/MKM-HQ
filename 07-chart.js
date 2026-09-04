@@ -1,182 +1,168 @@
 // CHART
 // ============================================================
 
+/* ------------------------------------------------------------
+   CONFIG
+   ------------------------------------------------------------ */
+
+const CANDLE_INTERVAL = 60;        // seconds per real-time candle
+const CHART_REFRESH_MS = 30000;    // poll history every 30s
+let chartRefreshTimer = null;
+let isChartLoading = false;
+
+function getCandleTime(timestampSec) {
+    return Math.floor(timestampSec / CANDLE_INTERVAL) * CANDLE_INTERVAL;
+}
+
+function chartLog(...args) {
+    const DEBUG = true; // flip to false once it's working
+    if (DEBUG) console.log("[Chart]", ...args);
+}
+
+/* Validate & fix a candle before passing to Lightweight Charts */
+function sanitizeCandle(c) {
+    if (!c) return null;
+
+    const time = Number(c.time);
+    const open = Number(c.open);
+    const high = Number(c.high);
+    const low  = Number(c.low);
+    const close = Number(c.close);
+
+    if (!Number.isFinite(time) || time <= 0) return null;
+    if (!Number.isFinite(open)  || open  < 0) return null;
+    if (!Number.isFinite(close) || close < 0) return null;
+
+    let fixedHigh = Number.isFinite(high) ? high : Math.max(open, close);
+    let fixedLow  = Number.isFinite(low)  ? low  : Math.min(open, close);
+
+    // Ensure high >= low
+    if (fixedHigh < fixedLow) {
+        const tmp = fixedHigh;
+        fixedHigh = fixedLow;
+        fixedLow = tmp;
+    }
+
+    // Ensure wicks extend past body
+    fixedHigh = Math.max(fixedHigh, open, close);
+    fixedLow  = Math.min(fixedLow,  open, close);
+
+    return { time, open, high: fixedHigh, low: fixedLow, close };
+}
+
+/* ------------------------------------------------------------
+   LOAD CHART
+   ------------------------------------------------------------ */
+
 async function loadChart() {
-
-    const container =
-        document.getElementById("price-chart");
-
+    const container = document.getElementById("price-chart");
     if (!container || !currentAsset) {
+        chartLog("No container or currentAsset");
         return;
     }
 
+    // Tear down old chart
+    stopChartRefresh();
     if (chartResizeObserver) {
-
-        try {
-            chartResizeObserver.disconnect();
-        } catch (error) {
-            console.warn(error);
-        }
-
+        try { chartResizeObserver.disconnect(); } catch (e) {}
         chartResizeObserver = null;
     }
-
     if (chart) {
-
-        try {
-            chart.remove();
-        } catch (error) {
-            console.warn(
-                "Could not remove previous chart:",
-                error
-            );
-        }
-
+        try { chart.remove(); } catch (e) { chartLog("Remove error:", e); }
         chart = null;
         candleSeries = null;
     }
 
     container.innerHTML = "";
     chartCandles = [];
+    isChartLoading = true;
 
-    if (
-        typeof LightweightCharts ===
-        "undefined"
-    ) {
-
-        container.innerHTML =
-            "<p>Chart library unavailable.</p>";
-
+    if (typeof LightweightCharts === "undefined") {
+        container.innerHTML = "<p>Chart library unavailable.</p>";
+        isChartLoading = false;
         return;
     }
 
-    const containerHeight =
-        container.clientHeight || 420;
+    const containerHeight = container.clientHeight || 420;
 
-    chart =
-        LightweightCharts.createChart(
-            container,
-            {
-                width:
-                    container.clientWidth || 700,
-
-                height: containerHeight,
-
-                layout: {
-                    background: {
-                        color: "transparent"
-                    },
-
-                    textColor: "#9ca3af"
-                },
-
-                grid: {
-                    vertLines: {
-                        color:
-                            "rgba(128,128,128,0.12)"
-                    },
-
-                    horzLines: {
-                        color:
-                            "rgba(128,128,128,0.12)"
-                    }
-                },
-
-                localization: {
-                    locale:
-                        navigator.language || "en-GB"
-                },
-
-                rightPriceScale: {
-                    borderColor:
-                        "rgba(128,128,128,0.25)"
-                },
-
-                timeScale: {
-                    borderColor:
-                        "rgba(128,128,128,0.25)",
-
-                    timeVisible: true,
-
-                    secondsVisible: false,
-
-                    rightOffset: 6,
-
-                    barSpacing: 10
-                },
-
-                crosshair: {
-                    mode: 1
-                },
-
-                handleScroll: {
-                    mouseWheel: true,
-                    pressedMouseMove: true,
-                    horzTouchDrag: true,
-                    vertTouchDrag: true
-                },
-
-                handleScale: {
-                    axisPressedMouseMove: true,
-                    mouseWheel: true,
-                    pinch: true
-                }
+    try {
+        chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth || 700,
+            height: containerHeight,
+            layout: {
+                background: { color: "transparent" },
+                textColor: "#9ca3af"
+            },
+            grid: {
+                vertLines: { color: "rgba(128,128,128,0.12)" },
+                horzLines: { color: "rgba(128,128,128,0.12)" }
+            },
+            localization: {
+                locale: navigator.language || "en-GB"
+            },
+            rightPriceScale: {
+                borderColor: "rgba(128,128,128,0.25)"
+            },
+            timeScale: {
+                borderColor: "rgba(128,128,128,0.25)",
+                timeVisible: true,
+                secondsVisible: false,
+                rightOffset: 6,
+                barSpacing: 10
+            },
+            crosshair: { mode: 1 },
+            handleScroll: {
+                mouseWheel: true,
+                pressedMouseMove: true,
+                horzTouchDrag: true,
+                vertTouchDrag: true
+            },
+            handleScale: {
+                axisPressedMouseMove: true,
+                mouseWheel: true,
+                pinch: true
             }
-        );
+        });
 
-    candleSeries =
-        chart.addSeries(
-            LightweightCharts.CandlestickSeries,
-            {
-                upColor: "#22c55e",
-                downColor: "#ef4444",
-
-                borderUpColor: "#22c55e",
-                borderDownColor: "#ef4444",
-
-                wickUpColor: "#22c55e",
-                wickDownColor: "#ef4444",
-
-                priceFormat: {
-                    type: "price",
-                    precision: 2,
-                    minMove: 0.01
-                },
-
-                lastValueVisible: true,
-                priceLineVisible: true
-            }
-        );
+        candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+            upColor: "#22c55e",
+            downColor: "#ef4444",
+            borderUpColor: "#22c55e",
+            borderDownColor: "#ef4444",
+            wickUpColor: "#22c55e",
+            wickDownColor: "#ef4444",
+            priceFormat: {
+                type: "price",
+                precision: 2,
+                minMove: 0.01
+            },
+            lastValueVisible: true,
+            priceLineVisible: true
+        });
+    } catch (err) {
+        console.error("Chart init error:", err);
+        container.innerHTML = "<p>Could not initialise chart.</p>";
+        isChartLoading = false;
+        return;
+    }
 
     await loadChartData();
 
     if (typeof ResizeObserver !== "undefined") {
-
-        chartResizeObserver =
-            new ResizeObserver(
-                entries => {
-
-                    for (
-                        const entry of entries
-                    ) {
-
-                        if (!chart) {
-                            return;
-                        }
-
-                        chart.resize(
-                            entry.contentRect.width,
-                            entry.contentRect.height
-                        );
-                    }
-                }
-            );
-
+        chartResizeObserver = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                if (!chart) return;
+                try {
+                    chart.resize(entry.contentRect.width, entry.contentRect.height);
+                } catch (e) {}
+            }
+        });
         chartResizeObserver.observe(container);
     }
 
-    /* Real-time price subscription */
     subscribeToAssetPrice();
+    startChartRefresh();
+    isChartLoading = false;
 }
 
 /* ------------------------------------------------------------
@@ -184,21 +170,12 @@ async function loadChart() {
    ------------------------------------------------------------ */
 
 function subscribeToAssetPrice() {
-
     if (priceSubscription) {
-
-        try {
-            supabaseClient.removeChannel(priceSubscription);
-        } catch (e) {
-            console.warn(e);
-        }
-
+        try { supabaseClient.removeChannel(priceSubscription); } catch (e) {}
         priceSubscription = null;
     }
 
-    if (!currentAsset) {
-        return;
-    }
+    if (!currentAsset) return;
 
     priceSubscription = supabaseClient
         .channel("asset-price-" + currentAsset.id)
@@ -211,289 +188,306 @@ function subscribeToAssetPrice() {
                 filter: "id=eq." + currentAsset.id
             },
             async (payload) => {
-
-                if (!payload.new) {
-                    return;
-                }
+                if (!payload.new) return;
 
                 currentAsset = payload.new;
 
-                setText(
-                    "asset-price",
-                    formatMoney(currentAsset.price)
-                );
-
-                setText(
-                    "trade-price",
-                    formatMoney(currentAsset.price)
-                );
-
+                const priceText = formatMoney(currentAsset.price);
+                setText("asset-price", priceText);
+                setText("trade-price", priceText);
                 updateAssetChange(currentAsset);
                 updateTradePreview();
 
-                /*
-                 * Smoothly update the last candle instead of
-                 * rebuilding the entire chart.
-                 */
-                if (chart && candleSeries) {
+                if (!chart || !candleSeries) return;
 
-                    const price = Number(currentAsset.price);
+                const rawPrice = currentAsset.price;
+                const price = Number(rawPrice);
 
-                    if (chartCandles.length > 0) {
+                if (!Number.isFinite(price) || price < 0) {
+                    chartLog("Invalid price in subscription:", rawPrice);
+                    return;
+                }
 
-                        const last =
-                            chartCandles[chartCandles.length - 1];
+                const nowSec = Math.floor(Date.now() / 1000);
+                const bucketTime = getCandleTime(nowSec);
 
-                        last.close = price;
-                        last.high = Math.max(last.high, price);
-                        last.low = Math.min(last.low, price);
+                if (chartCandles.length > 0) {
+                    const last = chartCandles[chartCandles.length - 1];
+                    const lastBucket = getCandleTime(last.time);
 
-                        candleSeries.update(last);
-
-                    } else if (price > 0) {
-
-                        /*
-                         * No historical candles yet — create the
-                         * first one from the live price update.
-                         */
-                        const time =
-                            Math.floor(Date.now() / 1000);
-
-                        const first = {
-                            time,
-                            open: price,
-                            high: price,
-                            low: price,
+                    if (bucketTime === lastBucket) {
+                        // Same bucket — update existing candle
+                        const updated = sanitizeCandle({
+                            time: last.time,
+                            open: last.open,
+                            high: Math.max(last.high, price),
+                            low: Math.min(last.low, price),
                             close: price
-                        };
+                        });
 
-                        chartCandles = [first];
-                        candleSeries.setData(chartCandles);
+                        if (!updated) {
+                            chartLog("Sanitize failed for update");
+                            return;
+                        }
 
-                        hideChartMessage();
+                        chartCandles[chartCandles.length - 1] = updated;
+
+                        try {
+                            candleSeries.update(updated);
+                        } catch (err) {
+                            chartLog("Update failed:", err, updated);
+                        }
+
+                    } else if (bucketTime > lastBucket) {
+                        // New bucket — create a fresh candle
+                        const newCandle = sanitizeCandle({
+                            time: bucketTime,
+                            open: last.close,
+                            high: Math.max(last.close, price),
+                            low: Math.min(last.close, price),
+                            close: price
+                        });
+
+                        if (!newCandle) {
+                            chartLog("Sanitize failed for new candle");
+                            return;
+                        }
+
+                        chartCandles.push(newCandle);
+
+                        try {
+                            candleSeries.update(newCandle);
+                        } catch (err) {
+                            chartLog("New candle update failed:", err, newCandle);
+                        }
+
+                        try {
+                            chart.timeScale().fitContent();
+                        } catch (e) {}
                     }
+                    // bucketTime < lastBucket → clock went backwards, ignore
+
+                } else if (price > 0) {
+                    // No candles yet — seed first live candle
+                    const first = sanitizeCandle({
+                        time: bucketTime,
+                        open: price,
+                        high: price,
+                        low: price,
+                        close: price
+                    });
+
+                    if (!first) {
+                        chartLog("Sanitize failed for first candle");
+                        return;
+                    }
+
+                    chartCandles = [first];
+
+                    try {
+                        candleSeries.setData(chartCandles);
+                    } catch (err) {
+                        chartLog("setData failed:", err, first);
+                    }
+
+                    hideChartMessage();
                 }
             }
         )
-        .subscribe();
+        .subscribe((status) => {
+            chartLog("Price subscription status:", status);
+        });
 }
 
-
-// ------------------------------------------------------------
-// CHART DATA
-// ------------------------------------------------------------
+/* ------------------------------------------------------------
+   CHART DATA
+   ------------------------------------------------------------ */
 
 async function loadChartData() {
+    if (!currentAsset || !candleSeries) return;
 
-    if (!currentAsset || !candleSeries) {
-        return;
-    }
+    const periodStart = getChartStartDate(currentChartPeriod);
 
-    const periodStart =
-        getChartStartDate(
-            currentChartPeriod
-        );
+    let history = [];
+    let fetchError = null;
 
-    let query =
-        supabaseClient
+    try {
+        let query = supabaseClient
             .from("PriceHistory")
             .select("*")
-            .eq(
-                "asset_id",
-                currentAsset.id
-            )
-            .order(
-                "recorded_at",
-                {
-                    ascending: true
-                }
-            );
+            .eq("asset_id", currentAsset.id)
+            .order("recorded_at", { ascending: true });
 
-    if (currentChartPeriod !== "ALL") {
+        if (currentChartPeriod !== "ALL") {
+            query = query.gte("recorded_at", periodStart.toISOString());
+        }
 
-        query =
-            query.gte(
-                "recorded_at",
-                periodStart.toISOString()
-            );
+        const { data, error } = await query;
+
+        if (error) {
+            fetchError = error;
+            chartLog("History fetch error:", error);
+        } else {
+            history = data || [];
+        }
+    } catch (err) {
+        fetchError = err;
+        chartLog("History fetch exception:", err);
     }
 
-    const {
-        data: history,
-        error
-    } = await query;
+    // Build candles from history
+    const historyCandles = buildCandles(history);
 
-    if (error) {
+    // Preserve real-time candles that are newer than the last history row
+    const realtimeCutoff = historyCandles.length > 0
+        ? historyCandles[historyCandles.length - 1].time
+        : 0;
 
-        console.error(
-            "Chart history error:",
-            error
-        );
+    const preservedRealtime = chartCandles.filter(c => c.time > realtimeCutoff);
 
-        showChartMessage(
-            "Could not load price history."
-        );
+    // Merge and deduplicate by time
+    const mergedMap = new Map();
 
-        return;
+    for (const c of historyCandles) {
+        const sc = sanitizeCandle(c);
+        if (sc) mergedMap.set(sc.time, sc);
     }
 
-    const candles =
-        buildCandles(
-            history || []
-        );
+    for (const c of preservedRealtime) {
+        const sc = sanitizeCandle(c);
+        if (sc) mergedMap.set(sc.time, sc);
+    }
 
-    const livePrice =
-        Number(currentAsset.price || 0);
+    // Sort by time and enforce strictly increasing
+    let merged = Array.from(mergedMap.values()).sort((a, b) => a.time - b.time);
+    merged = merged.filter((c, i, arr) => i === 0 || c.time > arr[i - 1].time);
 
-    if (candles.length > 0 && livePrice > 0) {
+    const livePrice = Number(currentAsset.price || 0);
 
-        /*
-         * The last history row may be stale — trades and
-         * real-time updates change the price without writing
-         * a new history row. Update the last candle so the
-         * chart always ends at the live price.
-         */
-        const last = candles[candles.length - 1];
+    if (merged.length > 0 && livePrice > 0) {
+        const last = merged[merged.length - 1];
+        const nowSec = Math.floor(Date.now() / 1000);
+        const bucketTime = getCandleTime(nowSec);
+        const lastBucket = getCandleTime(last.time);
 
-        last.close = livePrice;
-        last.high = Math.max(last.high, livePrice);
-        last.low = Math.min(last.low, livePrice);
+        if (bucketTime === lastBucket) {
+            const updated = sanitizeCandle({
+                time: last.time,
+                open: last.open,
+                high: Math.max(last.high, livePrice),
+                low: Math.min(last.low, livePrice),
+                close: livePrice
+            });
 
-    } else if (candles.length === 0 && livePrice > 0) {
+            if (updated) {
+                merged[merged.length - 1] = updated;
+            }
+        } else if (bucketTime > lastBucket) {
+            const newCandle = sanitizeCandle({
+                time: bucketTime,
+                open: last.close,
+                high: Math.max(last.close, livePrice),
+                low: Math.min(last.close, livePrice),
+                close: livePrice
+            });
 
-        /*
-         * Brand new asset with zero history rows.
-         * Seed a single candle so the chart isn't empty.
-         */
-        const time =
-            Math.floor(Date.now() / 1000);
+            if (newCandle) {
+                merged.push(newCandle);
+            }
+        }
 
-        candles.push({
-            time,
+    } else if (merged.length === 0 && livePrice > 0) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const seed = sanitizeCandle({
+            time: getCandleTime(nowSec),
             open: livePrice,
             high: livePrice,
             low: livePrice,
             close: livePrice
         });
+
+        if (seed) {
+            merged.push(seed);
+        }
     }
 
-    if (!candles.length) {
+    if (!merged.length) {
+        chartLog("No candles to display");
+        try { candleSeries.setData([]); } catch (e) {}
 
-        candleSeries.setData([]);
+        if (fetchError) {
+            showChartMessage("Price history unavailable. Chart will update live.");
+        } else {
+            showChartMessage("Not enough real market history yet.");
+        }
 
-        showChartMessage(
-            "Not enough real market history yet."
-        );
-
+        chartCandles = [];
         return;
     }
 
     hideChartMessage();
 
-    chartCandles = candles;
-    candleSeries.setData(candles);
+    chartCandles = merged;
+
+    try {
+        candleSeries.setData(merged);
+    } catch (err) {
+        chartLog("setData failed in loadChartData:", err);
+        showChartMessage("Chart error. Check console.");
+        return;
+    }
 
     if (chart) {
+        try {
+            if (merged.length < 6) {
+                const lastTime = merged[merged.length - 1].time;
+                const firstTime = merged[0].time;
+                const span = lastTime - firstTime;
+                const minSpan = span < 3600 ? 3600 : span * 1.5;
 
-        /*
-         * With very few candles fitContent() squeezes them
-         * into hairlines that look like a green "+".
-         * Keep a minimum logical range so candles stay
-         * readable.
-         */
-        if (candles.length < 6) {
-
-            const lastTime =
-                candles[candles.length - 1].time;
-
-            const firstTime =
-                candles[0].time;
-
-            const span =
-                lastTime - firstTime;
-
-            const minSpan =
-                span < 3600
-                    ? 3600
-                    : span * 1.5;
-
-            chart.timeScale().setVisibleRange({
-                from: lastTime - minSpan,
-                to: lastTime + minSpan * 0.15
-            });
-
-        } else {
-
-            chart.timeScale().fitContent();
+                chart.timeScale().setVisibleRange({
+                    from: lastTime - minSpan,
+                    to: lastTime + minSpan * 0.15
+                });
+            } else {
+                chart.timeScale().fitContent();
+            }
+        } catch (e) {
+            chartLog("Fit content error:", e);
         }
     }
 }
 
-
-// ------------------------------------------------------------
-// REAL CANDLES
-// ------------------------------------------------------------
+/* ------------------------------------------------------------
+   REAL CANDLES
+   ------------------------------------------------------------ */
 
 function buildCandles(history) {
-
-    const rows =
-        [...history]
-            .sort(
-                (a, b) =>
-                    new Date(a.recorded_at).getTime() -
-                    new Date(b.recorded_at).getTime()
-            );
+    const rows = [...history].sort(
+        (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()
+    );
 
     const candles = [];
-
     let previousTime = 0;
     let previousClose = null;
 
     rows.forEach(row => {
+        const timestamp = new Date(row.recorded_at).getTime();
+        if (!Number.isFinite(timestamp)) return;
 
-        const timestamp =
-            new Date(
-                row.recorded_at
-            ).getTime();
+        let time = Math.floor(timestamp / 1000);
 
-        if (!Number.isFinite(timestamp)) {
-            return;
-        }
-
-        let time =
-            Math.floor(
-                timestamp / 1000
-            );
-
-        /*
-         * Lightweight Charts requires strictly increasing
-         * timestamps.
-         */
+        // Lightweight Charts requires strictly increasing timestamps
         if (time <= previousTime) {
             time = previousTime + 1;
         }
 
-        const close =
-            Number(
-                row.close_price ??
-                row.price
-            );
+        const close = Number(row.close_price ?? row.price);
+        if (!Number.isFinite(close) || close <= 0) return;
 
-        if (
-            !Number.isFinite(close) ||
-            close <= 0
-        ) {
-            return;
-        }
-
-        let open =
-            Number(row.open_price);
-
-        let high =
-            Number(row.high_price);
-
-        let low =
-            Number(row.low_price);
+        let open = Number(row.open_price);
+        let high = Number(row.high_price);
+        let low  = Number(row.low_price);
 
         const hasValidOHLC =
             Number.isFinite(open) &&
@@ -504,87 +498,49 @@ function buildCandles(history) {
             low <= Math.min(open, close) &&
             high >= low;
 
-        /*
-         * If OHLC exists, use the actual stored values.
-         */
         if (!hasValidOHLC) {
-
-            /*
-             * Infer OHLC from sequential prices.
-             * Add a small realistic wick so candles
-             * don't look like flat bars.
-             */
-            open =
-                previousClose !== null
-                    ? previousClose
-                    : close;
+            open = previousClose !== null ? previousClose : close;
 
             const move = Math.abs(close - open);
-            const wick = move * (0.08 + Math.random() * 0.22) || close * 0.0015;
+            const baseWick = move > 0
+                ? move * (0.1 + Math.random() * 0.3)
+                : close * 0.002;
 
-            high =
-                Math.max(open, close) + wick;
+            const wick = Math.max(baseWick, close * 0.0005);
 
-            low =
-                Math.min(open, close) - wick;
+            high = Math.max(open, close) + wick;
+            low  = Math.min(open, close) - wick;
         }
 
-        candles.push({
-            time,
-            open,
-            high,
-            low,
-            close
-        });
-
-        previousTime = time;
-        previousClose = close;
+        const candle = sanitizeCandle({ time, open, high, low, close });
+        if (candle) {
+            candles.push(candle);
+            previousTime = candle.time;
+            previousClose = candle.close;
+        }
     });
 
     return candles;
 }
 
-
-// ------------------------------------------------------------
-// CHART PERIOD CONTROLS
-// ------------------------------------------------------------
-
-/*
- * Period controls live in the HTML markup.
- * setChartPeriod() toggles their active state.
- */
-
+/* ------------------------------------------------------------
+   CHART PERIOD CONTROLS
+   ------------------------------------------------------------ */
 
 function setChartPeriod(period) {
+    currentChartPeriod = period;
 
-    currentChartPeriod =
-        period;
-
-    document
-        .querySelectorAll(".chart-periods button")
-        .forEach(button => {
-
-            const active =
-                button.dataset.period ===
-                period;
-
-            button.classList.toggle(
-                "active",
-                active
-            );
-        });
+    document.querySelectorAll(".chart-periods button").forEach(button => {
+        const active = button.dataset.period === period;
+        button.classList.toggle("active", active);
+    });
 
     loadChartData();
 }
 
-
 function getChartStartDate(period) {
-
-    const now =
-        new Date();
-
-    const start =
-        new Date(now);
+    const now = new Date();
+    const start = new Date(now);
 
     const map = {
         "1W": "7D",
@@ -595,108 +551,76 @@ function getChartStartDate(period) {
     const p = map[period] || period;
 
     switch (p) {
-
         case "1D":
-
-            start.setDate(
-                now.getDate() - 1
-            );
-
+            start.setDate(now.getDate() - 1);
             break;
-
         case "7D":
-
-            start.setDate(
-                now.getDate() - 7
-            );
-
+            start.setDate(now.getDate() - 7);
             break;
-
         case "30D":
-
-            start.setDate(
-                now.getDate() - 30
-            );
-
+            start.setDate(now.getDate() - 30);
             break;
-
         case "90D":
-
-            start.setDate(
-                now.getDate() - 90
-            );
-
+            start.setDate(now.getDate() - 90);
             break;
-
         case "1Y":
-
-            start.setFullYear(
-                now.getFullYear() - 1
-            );
-
+            start.setFullYear(now.getFullYear() - 1);
             break;
-
         case "ALL":
-
         default:
-
-            start.setFullYear(
-                now.getFullYear() - 10
-            );
-
+            start.setFullYear(now.getFullYear() - 10);
             break;
     }
 
     return start;
 }
 
+/* ------------------------------------------------------------
+   CHART MESSAGE OVERLAY
+   ------------------------------------------------------------ */
 
 function showChartMessage(message) {
+    const chartContainer = document.getElementById("price-chart");
+    if (!chartContainer) return;
 
-    const chartContainer =
-        document.getElementById("price-chart");
-
-    if (!chartContainer) {
-        return;
-    }
-
-    let messageElement =
-        document.getElementById(
-            "mkm-chart-message"
-        );
+    let messageElement = document.getElementById("mkm-chart-message");
 
     if (!messageElement) {
-
-        messageElement =
-            document.createElement("div");
-
-        messageElement.id =
-            "mkm-chart-message";
-
-        messageElement.className =
-            "chart-message-overlay";
-
-        chartContainer.appendChild(
-            messageElement
-        );
+        messageElement = document.createElement("div");
+        messageElement.id = "mkm-chart-message";
+        messageElement.className = "chart-message-overlay";
+        chartContainer.appendChild(messageElement);
     }
 
-    messageElement.textContent =
-        message;
+    messageElement.textContent = message;
 }
 
-
 function hideChartMessage() {
-
-    const messageElement =
-        document.getElementById(
-            "mkm-chart-message"
-        );
-
+    const messageElement = document.getElementById("mkm-chart-message");
     if (messageElement) {
         messageElement.remove();
     }
 }
 
+/* ------------------------------------------------------------
+   REFRESH TIMER HELPERS
+   ------------------------------------------------------------ */
+
+function startChartRefresh() {
+    stopChartRefresh();
+    chartRefreshTimer = setInterval(() => {
+        if (currentAsset && chart && candleSeries && !isChartLoading) {
+            chartLog("Periodic history refresh");
+            loadChartData();
+        }
+    }, CHART_REFRESH_MS);
+}
+
+function stopChartRefresh() {
+    if (chartRefreshTimer) {
+        clearInterval(chartRefreshTimer);
+        chartRefreshTimer = null;
+    }
+}
 
 // ============================================================
